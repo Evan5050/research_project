@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Build the frontend and serve it with the Julia API on http://127.0.0.1:8080 (local only).
+# Uses the already-installed dependencies; it does not download anything.
+#   ./nextlab            build + serve (prints "NextLab READY" when warmed up)
+#   NEXTLAB_PORT=8090 ./nextlab
+set -euo pipefail
+cd "$(dirname "$0")"
+
+need() { command -v "$1" >/dev/null 2>&1 || { echo "NextLab: '$1' not found. $2" >&2; exit 1; }; }
+need julia "Install it with: brew install juliaup && juliaup add release"
+need npm "Install Node.js (npm 11 was used here)."
+[ -d frontend/node_modules ] || { echo "NextLab: frontend dependencies missing. Run once: npm --prefix frontend ci" >&2; exit 1; }
+
+port="${NEXTLAB_PORT:-8080}"
+if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "NextLab: port $port is already in use. If it is NextLab, check http://127.0.0.1:$port/api/ready" >&2
+  echo "         To restart: lsof -tiTCP:$port -sTCP:LISTEN | xargs kill; then run ./nextlab again." >&2
+  exit 1
+fi
+
+echo "NextLab: building frontend…"
+npm --prefix frontend run build --silent >/dev/null
+echo "NextLab: starting Julia server (first start compiles code; this takes a little while)…"
+exec julia --project=backend --threads=auto,1 backend/scripts/serve.jl

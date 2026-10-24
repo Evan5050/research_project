@@ -31,7 +31,15 @@ end
             st, b, _ = get_("/api/health")
             @test st == 200 && b["status"] == "ok" && b["julia_version"] == string(VERSION)
             st, b, _ = get_("/api/ready")
-            @test st == 200 && b["ready"] == true
+            @test st == 503 && b["ready"] == false                          # not ready until warmed up
+            @test !only(c["ok"] for c in b["checks"] if c["name"] == "warmed_up")
+            w = NextLab.warmup(base; repeats = 3)
+            @test w.first_pass_seconds > 0 && w.steady_recommend_median_ms > 0
+            st, b, _ = get_("/api/ready")
+            @test st == 200 && b["ready"] == true && b["warmup"]["repeats"] == 3
+            # Warmup keeps no state: the next demo start is the declared initial subset.
+            st, s0, _ = post("/api/demo/start", Dict())
+            @test s0["counts"]["observations"] == 9 && s0["counts"]["remaining_lengths"] == 6
             @test get_("/api/nope")[1] == 404
         end
 

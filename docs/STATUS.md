@@ -1,6 +1,6 @@
 # NextLab status
 
-_Last updated: 2026-10-24 18:55 EDT. Milestone: Prompt 09, acceptance audit (see `docs/ACCEPTANCE.md`)._
+_Last updated: 2026-10-24 19:00 EDT. Milestone: Prompt 12, presentation and launch reliability._
 
 ## Deadline
 - **Earliest submission deadline: UNKNOWN.** The event information has not been supplied in
@@ -9,8 +9,8 @@ _Last updated: 2026-10-24 18:55 EDT. Milestone: Prompt 09, acceptance audit (see
   for demo and submission work.
 
 ## Git
-- Current branch `benchmark`, at `e97cf09` (the user's upload/export commit). `main` is at `542c727`.
-- This milestone's audit fixes are uncommitted and nothing has been pushed.
+- Current branch `benchmark`, at `6cdd0a0` (the user's commit containing the audit and /tdd fixes). `main` is at `542c727`.
+- This milestone's presentation and launch work is uncommitted and nothing has been pushed.
 
 ## Works now (verified)
 - **Toolchain:** Julia 1.13.2 (Homebrew `juliaup`). `backend/` package `NextLab` uses HTTP 2.12.3,
@@ -62,8 +62,8 @@ _Last updated: 2026-10-24 18:55 EDT. Milestone: Prompt 09, acceptance audit (see
 
 ## Commands run and their outcomes
 - `julia --project=backend --threads=auto,1 -e 'using Pkg; Pkg.test()'`:
-  - 382/382 pass, with no known-broken markers. The suites are snapshot 10, replay 21, core 150,
-    benchmark 50, snapshot hashing 4 and API 147.
+  - 386/386 pass. The suites are snapshot 10, replay 21, core 150, benchmark 50, snapshot
+    hashing 4 and API 151; readiness now requires warmup.
   - The API tests run against a real server. They cover the full demo loop; no unrevealed
     periods in the start or recommend payloads; reveal returning only the selected length;
     browser-style JSON numbers accepted; stale (409) and tampered (422) snapshots;
@@ -81,7 +81,7 @@ _Last updated: 2026-10-24 18:55 EDT. Milestone: Prompt 09, acceptance audit (see
   - the Plotly vendor chunk has 22 matches, identical to the unmodified upstream
     `plotly-basic.min.js` (SVG icon path coordinates, not data)
 - `npm run lint`: 0 warnings. `npm run build` passes.
-- `frontend/scripts/browser-check.mjs`, headless Brave at 1366×768 and 1280×720: 64/64 pass (exit 0).
+- `frontend/scripts/browser-check.mjs`, headless Brave at 1366×768 and 1280×720: 68/68 pass (exit 0), including keyboard focus and no non-localhost requests.
   It now also checks:
   - displayed and exported predictions equal the raw `/api/recommend` response
   - double clicks on every action
@@ -151,9 +151,25 @@ At 8 settings (24 observations), comparing RMSE against the noiseless truth at 2
 - At 16 m the leading model missed by about 11 setting-mean SDs. Repeat scatter grows with
   length, so constant variance is an approximation.
 
+## Launch and presentation (Prompt 12)
+- **Launch:** `./nextlab` builds the frontend and serves it with the API.
+  - `serve.jl` warms up the demo and upload routes over HTTP with throwaway sessions and
+    synthetic data, then prints READY. `/api/ready` reports `warmed_up` and the warmup timings.
+  - Port conflicts get a clear message.
+  - Clean start: ready in 15 s. Restart after `kill -9`: ready in 16 s.
+  - Warmup first pass, including compilation: 10.8–11.4 s. Steady-state `/api/recommend`
+    median: 1.2 ms. No comparison with any other implementation.
+- **Presentation:**
+  - a fixed "Known now / Hidden for replay (or Feasible next)" block above the primary action
+  - recommendation labelled "Discriminating measurement" or "Space-filling validation point", with "Why feasible"
+  - a "What changed" verdict naming the leading model, with rises in validation error marked "↑ worse"
+  - visible definitions under the model cards (no hover-only tooltips)
+  - larger plot text, a clearer record button label, focus outlines on links and summaries, and a reduced-motion rule
+- **Checked:** contrast ≥ 5.08:1 for every text and colour pair used.
+- **Checklist:** `docs/LAUNCH.md`.
+
 ## Background servers
-The Julia server on 127.0.0.1:8080 is running in the background, serving the API and the current
-built frontend. Vite is not running.
+NextLab is running via `./nextlab` on 127.0.0.1:8080 (after the crash-restart test).
 
 ## Not built yet
 - a license for NextLab's own code

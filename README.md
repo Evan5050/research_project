@@ -17,11 +17,12 @@ npm --prefix frontend run dev -- --host 127.0.0.1                   # UI on :517
 ```
 Open http://127.0.0.1:5173. The page should say "Julia backend responded" and show the demo start.
 
-## Local demo (one process)
+## Local demo (one command)
 ```sh
-npm --prefix frontend run build
-julia --project=backend --threads=auto,1 backend/scripts/serve.jl   # UI and API on :8080
+./nextlab        # builds the frontend, serves UI + API on http://127.0.0.1:8080, prints "NextLab READY"
 ```
+Launch, readiness, reset and crash recovery: `docs/LAUNCH.md`. Screenshots of the running
+app are in `docs/screenshots/`.
 
 ## API
 Contract: `docs/API.md`. Live smoke check against a running server:

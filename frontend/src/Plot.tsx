@@ -142,10 +142,10 @@ export function ExperimentPlot(p: Props) {
     }
     const offScale = frozen.filter((m) => (m.predicted_y as number) > ymax)
     const layout = {
-      margin: { l: 58, r: 12, t: 8, b: 48 },
+      margin: { l: 64, r: 14, t: 8, b: 54 },
       paper_bgcolor: '#ffffff',
       plot_bgcolor: '#ffffff',
-      font: { family: 'system-ui, -apple-system, Segoe UI, sans-serif', size: 13, color: '#1f2328' },
+      font: { family: 'system-ui, -apple-system, Segoe UI, sans-serif', size: 14, color: '#1f2328' },
       xaxis: {
         type: logX ? 'log' : 'linear',
         title: { text: `${p.xLabel}${p.xUnit ? ` (${p.xUnit})` : ''}${logX ? ', log scale' : ''}` },
@@ -155,7 +155,8 @@ export function ExperimentPlot(p: Props) {
         zeroline: false,
       },
       yaxis: { title: { text: `${p.yLabel}${p.yUnit ? ` (${p.yUnit})` : ''}` }, range: [ymin, ymax], gridcolor: '#eaeef2', zeroline: false },
-      legend: { orientation: 'h', x: 0, y: 1.0, yanchor: 'bottom', font: { size: 12 } },
+      legend: { orientation: 'h', x: 0, y: 1.0, yanchor: 'bottom', font: { size: 13 } },
+      hoverlabel: { font: { size: 13 } },
       hovermode: 'closest',
     }
     return { data: traces, layout, offScale }

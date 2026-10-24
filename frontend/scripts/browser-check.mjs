@@ -95,8 +95,17 @@ listeners.push((m) => {
 })
 await send('Runtime.enable')
 await send('Network.enable')
+const allRequests = []
+listeners.push((m) => {
+  if (m.method === 'Network.requestWillBeSent') allRequests.push(m.params.request.url)
+})
+await send('Network.setBlockedURLs', { urls: ['https://*'] })
 await viewport(1366, 768)
 await send('Page.navigate', { url })
+
+// 0. Readiness: the server reports warmed-up code paths.
+const ready = await (await fetch(`${url}/api/ready`)).json()
+check('server reports ready after warmup', ready.ready === true && ready.checks.some((c) => c.name === 'warmed_up' && c.ok), JSON.stringify(ready.warmup))
 
 // 1. Load and compare
 await waitFor(`document.querySelector('button.primary')?.innerText === 'Recommend next measurement' && !document.querySelector('button.primary').disabled`, 'initial analysis')
@@ -104,7 +113,7 @@ await waitFor(`!!document.querySelector('.plot-canvas .main-svg')`, 'plot render
 await sleep(400)
 let t = await text()
 check('initial: 3 lengths, 9 observations shown', t.includes('3 lengths') && t.includes('9 period observations'))
-check('initial: hidden lengths explained', t.includes('stay hidden for replay'))
+check('initial: hidden lengths explained', t.includes('Hidden for replay'))
 check('initial: source label and attribution', t.includes('Recorded pendulum measurements') && t.includes('Calvin College'))
 const axes = await evaluate(`[...document.querySelectorAll('.plot-canvas .xtitle, .plot-canvas .ytitle')].map(e => e.textContent)`)
 check('plot axis labels with units', axes.some((a) => a.includes('(m), log scale')) && axes.some((a) => a.includes('Reported period (s)')), JSON.stringify(axes))
@@ -116,6 +125,20 @@ check('no reveal button before a snapshot exists', !(await text()).includes('Rev
 const above = await evaluate(`(() => { const b = document.querySelector('button.primary').getBoundingClientRect(); const p = document.querySelector('.plot-canvas').getBoundingClientRect(); return { button: b.bottom, plot: p.bottom } })()`)
 check('primary action and plot above the fold at 1366x768', above.button < 768 && above.plot < 768, JSON.stringify(above))
 await screenshot('initial-1366x768')
+// Keyboard: Tab reaches the main controls, and the focused primary action shows an outline.
+const focused = []
+let primaryOutline = null
+for (let i = 0; i < 25; i++) {
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  const f = await evaluate(`(() => { const e = document.activeElement; const s = getComputedStyle(e); return { text: (e.innerText || e.getAttribute('aria-label') || e.tagName).trim().slice(0, 40), primary: e.classList.contains('primary'), outline: s.outlineStyle + ' ' + s.outlineWidth } })()`)
+  focused.push(f.text)
+  if (f.primary) primaryOutline = f.outline
+}
+check('keyboard Tab reaches mode switch, record, reset, primary action and expandable details',
+  ['Use my data', 'Download record (JSON + CSV)', 'Reset demo', 'Recommend next measurement', 'Assumptions and data notes'].every((x) => focused.includes(x)),
+  focused.slice(0, 12).join(' | '))
+check('focused primary action has a visible outline', primaryOutline !== null && !primaryOutline.startsWith('none'), String(primaryOutline))
 await evaluate(`document.querySelector('details.assumptions').open = true`)
 t = await text()
 check('assumptions separate repeat variation from uncertainty of a mean; spread not a confidence interval',
@@ -226,7 +249,7 @@ for (let cycle = 1; cycle <= 7; cycle++) {
   await waitFor(`document.querySelector('button.primary')?.innerText.startsWith('Reveal') || document.body.innerText.includes('Replay complete')`, `cycle ${cycle} recommend`)
   t = await text()
   if (t.includes('Replay complete')) break
-  seen.kinds.push(t.includes('Largest model disagreement') ? 'disagreement' : 'space-filling')
+  seen.kinds.push(t.includes('Discriminating measurement') ? 'disagreement' : 'space-filling')
   seen.lowSeparation ||= t.includes('Low separation')
   seen.poorFit ||= t.includes('Poor fit (heuristic)')
   if (t.includes('Low separation')) await screenshot(`low-separation-cycle${cycle}`)
@@ -291,7 +314,7 @@ await clickPrimary()
 await waitFor(`document.querySelector('button.primary')?.innerText.startsWith('Reveal')`, 'demo snapshot for export')
 await clickPrimary()
 await waitFor(`document.querySelector('button.primary')?.innerText.startsWith('Update')`, 'demo revealed for export')
-await clickButton('Download record')
+await clickButton('Download record (JSON + CSV)')
 const demoJson = await waitDownload('nextlab-record-')
 const demoCsv = await waitDownload('nextlab-observations-')
 const demoRec = JSON.parse(demoJson).record
@@ -317,9 +340,9 @@ await chooseFile(join(files, 'sample.csv'))
 await waitFor(`document.body.innerText.includes('27 data rows')`, 'sample preview')
 await setValue('Input unit', 'm'); await setValue('Response unit', 's')
 await loadButton()
-await waitFor(`document.body.innerText.includes('Every uploaded row is already observed') && document.querySelector('button.primary')?.innerText === 'Recommend next measurement'`, 'sample loaded')
+await waitFor(`document.body.innerText.includes('all uploaded rows are observed') && document.querySelector('button.primary')?.innerText === 'Recommend next measurement'`, 'sample loaded')
 t = await text()
-check('sample upload: 9 distinct values, 27 rows, nothing hidden', t.includes('9 distinct length_m values') && t.includes('27 rows') && t.includes('no hidden data'))
+check('sample upload: 9 distinct values, 27 rows, nothing hidden', t.includes('9 distinct length_m values, 27 rows') && t.includes('nothing is hidden'))
 
 // Malformed value: row-level message, nothing loaded.
 await clickButton('Start over')
@@ -352,7 +375,7 @@ await loadButton()
 await waitFor(`document.querySelector('button.primary')?.innerText === 'Recommend next measurement'`, 'dose loaded')
 t = await text()
 check('repeats kept: 3 distinct Dose values, 5 rows; one setting marked as extrapolation',
-  t.includes('3 distinct Dose values') && t.includes('5 rows') && t.includes('8 from 1 to 6 mg') && t.includes('1 of them outside the observed range'))
+  t.includes('3 distinct Dose values, 5 rows') && t.includes('8 settings, 1–6 mg') && t.includes('1 beyond the observed range'))
 const ax2 = await evaluate(`[...document.querySelectorAll('.plot-canvas .xtitle, .plot-canvas .ytitle')].map(e => e.textContent)`)
 check('plot uses the user labels and units, linear axis for a narrow range', ax2.includes('Dose (mg)') && ax2.includes('Response (a.u.)'), JSON.stringify(ax2))
 
@@ -384,10 +407,10 @@ await evaluate(`document.querySelector('details.settings').open = true`)
 await setValue('Explicit feasible settings', '3, 5')
 await evaluate(`[...document.querySelectorAll('button')].find(b => b.innerText === 'Apply settings').click()`)
 await waitFor(`!document.querySelector('[aria-label="Measured values"]') && document.querySelector('button.primary')?.innerText === 'Recommend next measurement'`, 'settings applied')
-check('changing feasible settings discards the pending recommendation', (await text()).includes('2 from 3 to 5 mg'))
+check('changing feasible settings discards the pending recommendation', (await text()).includes('2 settings, 3–5 mg'))
 
 // Export the uploaded run.
-await clickButton('Download record')
+await clickButton('Download record (JSON + CSV)')
 const upJson = await waitDownload('nextlab-record-')
 const upCsv = await waitDownload('nextlab-observations-')
 const up = JSON.parse(upJson)
@@ -451,7 +474,7 @@ await sleep(300)
 check('double click on Update sends one refit and adds one history row', count('/api/analyze') - before2 === 1 &&
   (await evaluate(`document.querySelectorAll('.history tbody tr').length`)) === 1)
 for (const f of readdirSync(dl)) unlinkSync(join(dl, f))
-await clickButton('Download record')
+await clickButton('Download record (JSON + CSV)')
 const auditRec = JSON.parse(await waitDownload('nextlab-record-')).record
 check('exported frozen predictions equal the pre-reveal snapshot exactly',
   JSON.stringify(auditRec.cycles[0].frozen_predictions) === JSON.stringify(recSnap.record.models) && auditRec.cycles[0].snapshot_id === recSnap.snapshot_id)
@@ -503,7 +526,7 @@ check('precondition: the snapshot holds -0 and JSON.stringify writes it as 0', !
 await clickPrimary()
 await waitFor(`document.body.innerText.includes('What changed after adding')`, 'constant: update')
 for (const f of readdirSync(dl)) unlinkSync(join(dl, f))
-await clickButton('Download record')
+await clickButton('Download record (JSON + CSV)')
 const constRec = JSON.parse(await waitDownload('nextlab-record-')).record
 check('constant-response export: entered value in cycle 1, refit recorded, frozen predictions kept',
   constRec.observations.filter((o) => o.origin === 'entered_manually' && o.cycle === 1).length === 1 &&
@@ -541,6 +564,8 @@ await sleep(300)
 check('double click on Record measurement sends one observe request, one history row', count('/api/observe') - before2 === 1 &&
   (await evaluate(`document.querySelectorAll('.history tbody tr').length`)) === 1)
 
+const external = allRequests.filter((u) => !/^(http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/|data:|blob:|about:)/.test(u))
+check('no requests outside localhost (https blocked for the whole run)', external.length === 0, external.slice(0, 3).join(' '))
 check('no uncaught page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | ').slice(0, 400))
 console.log(failures === 0 ? '\nBrowser check passed.' : `\n${failures} check(s) failed.`)
 ws.close()

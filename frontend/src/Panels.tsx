@@ -86,6 +86,11 @@ export function ModelCards({ models, yUnit }: { models: ModelResult[]; yUnit: st
           {m.adequacy.conflicts_with_noise && <div className="tag warn">misses measured variability (heuristic)</div>}
         </article>
       ))}
+      <p className="card-key dim">
+        <strong>Validation error</strong>: each measured setting is left out in turn (all its repeats) and predicted from the
+        rest; RMSE of those held-out predictions. <strong>Relative support</strong>: a heuristic weight from validation error,
+        not a probability that the model is true.
+      </p>
     </div>
   )
 }
@@ -100,12 +105,14 @@ export function RecommendationPanel({
   measured,
   units,
   demo,
+  feasible,
 }: {
   rec: RecommendResponse
   snapshot: Snapshot
   measured: [number, number]
   units: { x: string; y: string }
   demo: boolean
+  feasible: string
 }) {
   const setting = demo ? 'length' : 'setting'
   const r = rec.analysis.recommendation!
@@ -120,8 +127,13 @@ export function RecommendationPanel({
         Next measurement: {snapshot.record.x} {units.x}
       </h2>
       <div className={`badge ${r.kind}`}>
-        {r.kind === 'disagreement' ? 'Largest model disagreement' : 'Space-filling validation point'}
+        {r.kind === 'disagreement'
+          ? 'Discriminating measurement: where the models disagree most'
+          : 'Space-filling validation point: not chosen to tell the models apart'}
       </div>
+      <p className="feasible-note">
+        <strong>Why feasible:</strong> {feasible}
+      </p>
       {!inRange(snapshot.record.x, measured[0], measured[1]) && (
         <p className="note">
           Outside the measured range ({sig(measured[0])}–{sig(measured[1])} {units.x}): every model is extrapolating here.
@@ -269,35 +281,74 @@ export function ComparisonPanel({ outcome, units, demo }: { outcome: OutcomeResp
   )
 }
 
+function trend(before: number | null, after: number | null, lowerIsBetter: boolean) {
+  if (before === null || after === null || before === after) return { text: 'unchanged', cls: '' }
+  const better = lowerIsBetter ? after < before : after > before
+  return { text: better ? '↓ better' : '↑ worse', cls: better ? 'up' : 'down' }
+}
+
+const leader = (models: ModelResult[]) =>
+  [...models].filter((m) => m.support !== null).sort((a, b) => (b.support ?? 0) - (a.support ?? 0))[0]
+
 export function ChangePanel({ cycle, units }: { cycle: Cycle; units: { x: string; y: string } }) {
   if (!cycle.after) return null
   const after = cycle.after
+  const lb = leader(cycle.before.models)
+  const la = leader(after.models)
+  const leadAfter = la ? after.models.find((m) => m.id === la.id) : undefined
+  const leadBefore = la ? cycle.before.models.find((m) => m.id === la.id) : undefined
+  const leadWorse =
+    leadAfter?.grouped_cv_rmse != null && leadBefore?.grouped_cv_rmse != null && leadAfter.grouped_cv_rmse > leadBefore.grouped_cv_rmse
   return (
     <section className="panel change">
       <h2>
         What changed after adding {cycle.outcome.x} {units.x}
       </h2>
+      <p>
+        {la && lb && la.id === lb.id ? (
+          <>
+            Leading model unchanged: <strong>{la.name}</strong>{' '}
+            <span className="nowrap">
+              (support {support(lb.support)} → {support(la.support)}).
+            </span>
+          </>
+        ) : (
+          <>
+            Leading model changed: <strong>{lb?.name ?? '—'}</strong> → <strong>{la?.name ?? '—'}</strong>.
+          </>
+        )}{' '}
+        {leadWorse && (
+          <span className="warn">
+            Its validation error rose ({withUnit(leadBefore?.grouped_cv_rmse, units.y)} → {withUnit(leadAfter?.grouped_cv_rmse, units.y)})
+            once the new setting was included in leave-one-out validation.
+          </span>
+        )}
+      </p>
       <table className="preds">
         <thead>
           <tr>
             <th>Model</th>
             <th className="num">Relative support</th>
-            <th className="num">Validation error (RMSE)</th>
+            <th className="num">Validation RMSE</th>
           </tr>
         </thead>
         <tbody>
           {cycle.before.models.map((b) => {
             const a = after.models.find((m) => m.id === b.id)!
+            const tr = trend(b.grouped_cv_rmse, a.grouped_cv_rmse, true)
             return (
               <tr key={b.id}>
                 <td>
                   <Swatch id={b.id} /> {b.name}
                 </td>
                 <td className="num">
-                  {support(b.support)} → {support(a.support)}
+                  <span className="nowrap">
+                    {support(b.support)} → {support(a.support)}
+                  </span>
                 </td>
                 <td className="num">
-                  {withUnit(b.grouped_cv_rmse, units.y)} → {withUnit(a.grouped_cv_rmse, units.y)}
+                  {withUnit(b.grouped_cv_rmse, units.y)} → {withUnit(a.grouped_cv_rmse, units.y)}{' '}
+                  <span className={`trend ${tr.cls}`}>{tr.text}</span>
                 </td>
               </tr>
             )
@@ -306,8 +357,8 @@ export function ChangePanel({ cycle, units }: { cycle: Cycle; units: { x: string
       </table>
       <p className="dim">
         SD of individual observations (from repeats): {withUnit(cycle.before.noise?.sd_individual, units.y)} →{' '}
-        {withUnit(after.noise?.sd_individual, units.y)}. Errors and spread can rise after new data; these are the values as
-        computed.
+        {stop(withUnit(after.noise?.sd_individual, units.y))} Errors and spread can rise after new data; these are the values
+        as computed. The earlier prediction card is kept in the history below.
       </p>
     </section>
   )

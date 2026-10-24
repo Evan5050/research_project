@@ -239,7 +239,7 @@ function App() {
         </div>
         <div className="top-actions">
           <button onClick={() => void onExport()} disabled={!ctx || busy}>
-            Download record
+            Download record (JSON + CSV)
           </button>
           <button onClick={() => (demo ? void startDemoRun() : chooseUpload())}>{demo ? 'Reset demo' : 'Start over'}</button>
         </div>
@@ -298,26 +298,43 @@ function App() {
           </div>
 
           <aside className="right">
-            {ctx &&
-              (demo ? (
-                <p className="observed-note">
-                  Observed: <strong>{settingsMeasured} lengths</strong>, <strong>{ctx.observed.length} period observations</strong>{' '}
-                  (reported averages over several swings).{' '}
-                  {ctx.candidate_x.length > 0 && (
-                    <>
-                      The other {ctx.candidate_x.length} recorded lengths ({ctx.candidate_x.join(', ')} {units.x}) stay hidden
-                      for replay; the recommendation sees only the observed periods and which lengths exist.
-                    </>
-                  )}
-                </p>
-              ) : (
-                <p className="observed-note">
-                  Observed: <strong>{settingsMeasured} distinct {labels.x} values</strong>,{' '}
-                  <strong>{ctx.observed.length} rows</strong>. Every uploaded row is already observed; there is no hidden data.
-                  Feasible next settings: {cands.length} from {sig(Math.min(...cands))} to {sig(Math.max(...cands))} {units.x}
-                  {outside > 0 && <>, {outside} of them outside the observed range (extrapolation)</>}.
-                </p>
-              ))}
+            {ctx && (
+              <dl className="facts" aria-label="Current data">
+                <dt>Known now</dt>
+                <dd>
+                  <strong>
+                    {settingsMeasured} {demo ? 'lengths' : `distinct ${labels.x} values`}, {ctx.observed.length}{' '}
+                    {demo ? 'period observations' : 'rows'}
+                  </strong>{' '}
+                  <span className="dim">
+                    ({demo ? 'reported averages over several swings' : 'all uploaded rows are observed; nothing is hidden'})
+                  </span>
+                </dd>
+                {demo ? (
+                  <>
+                    <dt>Hidden for replay</dt>
+                    <dd>
+                      {ctx.candidate_x.length > 0 ? (
+                        <>
+                          {ctx.candidate_x.length} recorded lengths ({ctx.candidate_x.join(', ')} {units.x}).{' '}
+                          <span className="dim">The recommendation sees which lengths exist, not their periods.</span>
+                        </>
+                      ) : (
+                        'none'
+                      )}
+                    </dd>
+                  </>
+                ) : (
+                  <>
+                    <dt>Feasible next</dt>
+                    <dd>
+                      {cands.length} settings, {sig(Math.min(...cands))}–{sig(Math.max(...cands))} {units.x}
+                      {outside > 0 && <> ({outside} beyond the observed range: extrapolation)</>}
+                    </dd>
+                  </>
+                )}
+              </dl>
+            )}
 
             {primaryLabel && (
               <button className="primary" onClick={onPrimary} disabled={busy || !ctx}>
@@ -353,7 +370,18 @@ function App() {
             {s.outcome ? (
               <ComparisonPanel outcome={s.outcome} units={units} demo={demo} />
             ) : s.snapshot && s.recommendation ? (
-              <RecommendationPanel rec={s.recommendation} snapshot={s.snapshot} measured={measured} units={units} demo={demo} />
+              <RecommendationPanel
+                rec={s.recommendation}
+                snapshot={s.snapshot}
+                measured={measured}
+                units={units}
+                demo={demo}
+                feasible={
+                  demo
+                    ? `${s.snapshot.record.x} ${units.x} is one of the ${ctx?.candidate_x.length} recorded lengths not yet revealed.`
+                    : `${s.snapshot.record.x} ${units.x} is in your feasible settings (${cands.length} settings, ${sig(Math.min(...cands))}–${sig(Math.max(...cands))} ${units.x}) and has not been measured.`
+                }
+              />
             ) : lastCycle?.after ? (
               <ChangePanel cycle={lastCycle} units={units} />
             ) : (

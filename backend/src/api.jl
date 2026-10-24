@@ -250,12 +250,51 @@ end
 health(::HTTP.Request) = json_response(200, (status = "ok", service = "nextlab-backend",
     api_version = API_VERSION, julia_version = string(VERSION)))
 
+"Set by `warmup` once the demo and upload code paths have run once (see scripts/serve.jl)."
+const WARM = Ref(false)
+const WARMUP_TIMING = Ref{Any}(nothing)
+
 function ready(::HTTP.Request)
     checks = [(name = "demo_data", ok = try demo_records(); true catch; false end),
               (name = "method", ok = METHOD_VERSION == "nextlab-core-1"),
+              (name = "warmed_up", ok = WARM[]),
               (name = "benchmark_results", ok = isfile(joinpath(RESULTS_DIR, "meta.json")))]
-    ok = all(c -> c.ok, checks[1:2])                   # benchmark results are optional for readiness
-    return json_response(ok ? 200 : 503, (ready = ok, checks = checks))
+    ok = all(c -> c.ok, checks[1:3])                   # benchmark results are optional for readiness
+    return json_response(ok ? 200 : 503, (ready = ok, checks = checks, warmup = WARMUP_TIMING[]))
+end
+
+"""
+    warmup(base; repeats = 20) -> NamedTuple
+
+Exercise the demo and upload routes once over real HTTP so their code is compiled before
+a person uses the app, then time steady-state demo requests. Uses its own throwaway
+sessions and an in-memory synthetic CSV; no state is kept (the API is stateless), so the
+next `/api/demo/start` begins at the declared initial demo.
+"""
+function warmup(base::AbstractString; repeats::Integer = 20)
+    post(path, body) = JSON.parse(String(HTTP.post(base * path, ["Content-Type" => "application/json"], JSON.json(body)).body))
+    first_pass = @elapsed begin
+        HTTP.get(base * "/api/health"); HTTP.get(base * "/"; status_exception = false)
+        st = post("/api/demo/start", Dict()); ctx = st["context"]
+        post("/api/analyze", Dict("context" => ctx))
+        snap = post("/api/recommend", Dict("context" => ctx))["snapshot"]
+        rv = post("/api/demo/reveal", Dict("context" => ctx, "snapshot" => snap))
+        post("/api/analyze", Dict("context" => rv["updated_context"]))
+        post("/api/export", Dict("context" => rv["updated_context"], "history" => [Dict("snapshot" => snap, "updated" => true)]))
+        csv = "x,y\n1,2.0\n1,2.1\n2,2.9\n4,4.1\n"          # synthetic warmup data, never shown
+        post("/api/upload/preview", Dict("csv" => csv))
+        up = post("/api/upload", Dict("csv" => csv, "bounds" => Dict("lo" => 1, "hi" => 4, "step" => 1), "candidate_x" => [6]))
+        us = post("/api/recommend", Dict("context" => up["context"]))["snapshot"]
+        post("/api/observe", Dict("context" => up["context"], "snapshot" => us, "y" => [5.0]))
+        HTTP.get(base * "/api/benchmark"; status_exception = false)
+    end
+    ctx = post("/api/demo/start", Dict())["context"]
+    times = [(@elapsed post("/api/recommend", Dict("context" => ctx))) for _ in 1:repeats]
+    sort!(times)
+    WARMUP_TIMING[] = (first_pass_seconds = first_pass, steady_recommend_median_ms = 1000 * times[cld(repeats, 2)],
+                       steady_recommend_max_ms = 1000 * last(times), repeats = repeats)
+    WARM[] = true
+    return WARMUP_TIMING[]
 end
 
 function demo_start(req::HTTP.Request)
