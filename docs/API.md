@@ -58,7 +58,7 @@ The scientific core never sees the demo table. `demo_adapter.jl` is the only rea
 | GET `/api/health` | none | `{status, service, api_version, julia_version}` | |
 | GET `/api/ready` | none | `{ready, checks: [{name, ok}]}`. Benchmark results are optional. | 503 if demo data or method check fails |
 | POST `/api/demo/start` | `{}` | `{context, revision, dataset (provenance), counts}`: start rows and remaining lengths only. Also used for reset. | |
-| POST `/api/analyze` | `{context}` | `{revision, session_id, status, analysis, curves}`. `analysis` is the full core result: models, support, diagnostics, `data.revision`. `curves` is 101-point model and ensemble curves. | 422 field errors |
+| POST `/api/analyze` | `{context}` | `{revision, session_id, status, analysis, curves}`. `analysis` is the full core result: models, support, diagnostics, `data.revision`. `curves` holds model and ensemble curves on a 101-point geometric grid (even spacing on a log x axis), plus the exact ends of the measured range. | 422 field errors |
 | POST `/api/recommend` | `{context}` | as analyze, plus `snapshot`. `snapshot` is `null` when `status = "no_candidates"`. | 422 (including fewer than 3 distinct x) |
 | POST `/api/demo/reveal` | `{context, snapshot}` | `{revision, session_id, snapshot_id, x, observations, comparison, refit_performed: false, updated_context, updated_revision}` | 422 (not demo, unknown or revealed length, altered snapshot), 409 (stale) |
 | POST `/api/observe` | `{context, snapshot, y: number[]}` (1–50 values) | same shape as reveal | 422 (not upload mode, bad values), 409 (stale) |
@@ -66,6 +66,7 @@ The scientific core never sees the demo table. `demo_adapter.jl` is the only rea
 | POST `/api/feasible` | `{lo, hi, n}` | `{candidate_x}` (an even grid) | 422 |
 | POST `/api/export` | `{context, history: Snapshot[]}` | `{format: "nextlab-experiment-record-1", exported_at, revision, context, dataset, history: [{snapshot, outcome}], current_analysis}` | 422 if a snapshot doesn't verify |
 | GET `/api/benchmark` | none | `{meta, primary_endpoint, verdicts, paired, summary, nextlab_choices, reproduce: {command, protocol, results_dir}}` | 404 if there are no saved results |
+| GET `/api/benchmark/files/{name}` | `name` ∈ `runs.csv`, `summary.csv`, `paired.csv`, `nextlab_choices.csv`, `meta.json` | The saved file, as a download | 404 for any other name |
 
 **Error shape:** `{error: string, fields: [{field, message}]}`, with field paths such as
 `context.observed[3].x`, `bounds.hi` and `y[1]`.

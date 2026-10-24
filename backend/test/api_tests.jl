@@ -36,7 +36,8 @@ jsify(x) = x
 
             st, an, _ = post("/api/analyze", Dict("context" => ctx))
             @test st == 200 && an["status"] == "ok" && an["revision"] == start["revision"]
-            @test length(an["curves"]["x"]) == 101 && an["curves"]["ensemble"] !== nothing
+            @test length(an["curves"]["x"]) >= 101 && an["curves"]["ensemble"] !== nothing
+            @test 0.101 in an["curves"]["x"] && 0.411 in an["curves"]["x"]          # measured-range ends are exact grid points
             @test an["analysis"]["data"]["revision"] isa String
 
             st, rec, text = post("/api/recommend", Dict("context" => ctx))
@@ -210,6 +211,10 @@ jsify(x) = x
             @test length(b["paired"]) == 48 && all(r -> r["n_settings"] == 8, b["paired"])
             @test Set(v["baseline"] for v in b["verdicts"]) == Set(["random", "preplanned_even", "endpoint_maximin"])
             @test occursin("run_benchmark.jl full 100", b["reproduce"]["command"])
+            r = HTTP.get(base * "/api/benchmark/files/paired.csv"; status_exception = false)
+            @test r.status == 200 && startswith(String(copy(r.body)), "condition,")
+            @test HTTP.get(base * "/api/benchmark/files/..%2Fmeta.json"; status_exception = false).status == 404
+            @test HTTP.get(base * "/api/benchmark/files/Project.toml"; status_exception = false).status == 404
         end
     finally
         close(server)

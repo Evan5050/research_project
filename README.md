@@ -33,3 +33,11 @@ julia --project=backend backend/scripts/api_smoke.jl http://127.0.0.1:8080
 ```sh
 julia --project=backend --threads=auto,1 -e 'using Pkg; Pkg.test()'
 ```
+
+Browser check of the full demo loop, using a real headless Chromium (Brave here) over the
+DevTools protocol, with no extra npm packages. Run it against a server that serves the built frontend:
+```sh
+npm --prefix frontend run build
+CHROME="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \
+  node frontend/scripts/browser-check.mjs http://127.0.0.1:8080 /tmp/nextlab-shots
+```

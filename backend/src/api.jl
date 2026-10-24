@@ -182,7 +182,7 @@ function curves_for(a, c::ExperimentContext)
     xs = vcat(first.(c.observed), c.candidate_x)
     lo, hi = extrema(xs)
     lo == hi && return nothing
-    return model_curves(a, lo, hi)
+    return model_curves(a, lo, hi; include = collect(extrema(first.(c.observed))))
 end
 
 # ---- snapshots ------------------------------------------------------------------------------
@@ -380,6 +380,20 @@ function benchmark_route(::HTTP.Request)
                      protocol = "docs/BENCHMARK.md", results_dir = "results/benchmark_full")))
 end
 
+const BENCHMARK_FILES = Dict("runs.csv" => "text/csv", "summary.csv" => "text/csv", "paired.csv" => "text/csv",
+                             "nextlab_choices.csv" => "text/csv", "meta.json" => "application/json")
+
+"Download one saved benchmark result file by exact name (whitelist; no path components)."
+function benchmark_file_route(req::HTTP.Request)
+    name = HTTP.getparam(req, "name")
+    haskey(BENCHMARK_FILES, name) ||
+        throw(RequestError(404, "Unknown benchmark file.", [("name", "One of: $(join(sort(collect(keys(BENCHMARK_FILES))), ", ")).")]))
+    path = joinpath(RESULTS_DIR, name)
+    isfile(path) || throw(RequestError(404, "No saved benchmark results."))
+    return HTTP.Response(200, read(path); headers = ["Content-Type" => BENCHMARK_FILES[name],
+                                                    "Content-Disposition" => "attachment; filename=\"nextlab_benchmark_$name\""])
+end
+
 not_found(::HTTP.Request) = json_response(404, (error = "not found", fields = []))
 
 """
@@ -395,7 +409,8 @@ function router(; static_dir::Union{Nothing,AbstractString} = nothing)
                               ("POST", "/api/analyze", analyze_route), ("POST", "/api/recommend", recommend_route),
                               ("POST", "/api/upload", upload_route), ("POST", "/api/feasible", feasible_route),
                               ("POST", "/api/observe", observe_route), ("POST", "/api/export", export_route),
-                              ("GET", "/api/benchmark", benchmark_route))
+                              ("GET", "/api/benchmark", benchmark_route),
+                              ("GET", "/api/benchmark/files/{name}", benchmark_file_route))
         HTTP.register!(r, method, path, guarded(h))
     end
     HTTP.register!(r, "/api/**", not_found)

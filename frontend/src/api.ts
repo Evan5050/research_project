@@ -237,17 +237,36 @@ export function assertCurrent<T extends Revisioned>(resp: T, expected: { revisio
   return resp
 }
 
+/** Status 0 means the Julia backend could not be reached at all. */
+export const BACKEND_UNAVAILABLE = 0
+
 async function call<T>(method: 'GET' | 'POST', url: string, body?: unknown): Promise<T> {
-  const resp = await fetch(url, {
-    method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  let resp: Response
+  try {
+    resp = await fetch(url, {
+      method,
+      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch {
+    throw new ApiError(BACKEND_UNAVAILABLE, { error: 'The Julia backend is not responding.', fields: [] })
+  }
   const text = await resp.text()
-  const parsed = text ? (JSON.parse(text) as unknown) : null
+  let parsed: unknown = null
+  try {
+    parsed = text ? JSON.parse(text) : null
+  } catch {
+    // A proxy error page or an empty 413 body is not JSON.
+  }
+  if (resp.status === 502 || resp.status === 503 || resp.status === 504) {
+    throw new ApiError(BACKEND_UNAVAILABLE, { error: 'The Julia backend is not responding.', fields: [] })
+  }
   if (!resp.ok) throw new ApiError(resp.status, parsed as ApiErrorBody | null)
   return parsed as T
 }
+
+export const benchmarkFileUrl = (name: 'runs.csv' | 'summary.csv' | 'paired.csv' | 'nextlab_choices.csv' | 'meta.json') =>
+  `/api/benchmark/files/${name}`
 
 export const fetchHealth = () => call<Health>('GET', '/api/health')
 export const fetchReady = () => call<Ready>('GET', '/api/ready')
