@@ -1,0 +1,20 @@
+:root {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  color: #1f2328;
+  background: #ffffff;
+}
+
+main {
+  max-width: 48rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.ok {
+  color: #1a7f37;
+}
+
+.error {
+  color: #cf222e;
+}
