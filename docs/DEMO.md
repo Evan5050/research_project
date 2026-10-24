@@ -19,65 +19,54 @@ and timestamp change between runs.
 
 ## Script
 
+The narration is 181 words, which is roughly 72 s at 150 words per minute. That
+leaves a few seconds for the clicks. Each click responds in about 0.02 s, measured in
+headless Brave. The spoken timing is an estimate; time yourself once with a stopwatch.
+
 **0 to 10 s.** The app is already on screen.
 
-> "When a trainee extends a series of measurements, they refit a few models, pick the next
-> setting, and should write down what each model predicts before measuring. That last step
-> is the one people skip. NextLab does those steps without any analysis code."
+> "When trainees extend a measurement series, they should write down each model's
+> prediction before measuring. Usually they don't. NextLab makes that step automatic."
 
-**10 to 25 s.** Show the observed data and the competing models. Point at the plot and the
-three model cards.
+**10 to 25 s.** Point at the plot, then the three cards.
 
-> "These are recorded pendulum measurements from a public teaching dataset. They are not my
-> data, and the source is credited at the top. We start from the three shortest lengths:
-> 9 period observations. The other six lengths are hidden for replay. The three cards are
-> the competing models. The square-root model has the lowest leave-one-out validation
-> error, 0.025 seconds."
+> "These are recorded pendulum measurements from a public teaching dataset, credited at
+> the top. We start with three lengths; six are hidden for replay. Three competing models.
+> Square root validates best."
 
-The cards read: Linear 0.136 s, support < 0.001; Square root 0.025 s, support > 0.999;
-Restricted quadratic 0.471 s, support < 0.001.
+**25 to 45 s.** Click **Recommend next measurement**.
 
-**25 to 45 s.** Click **Recommend next measurement**. Read the right-hand panel and the
-markers on the plot.
-
-> "NextLab recommends 16 metres. That length is in the recorded set and hasn't been
-> revealed yet. It's labelled a space-filling validation point. One model already holds
-> nearly all the support, so this point checks it where the data are sparse. It isn't
-> chosen to tell the models apart. The predictions are now frozen: linear says 33.5
-> seconds, square root 8.12 seconds, the restricted quadratic 965 seconds. Nothing has
-> been revealed yet."
-
-The caption under the plot lists the two predictions that are off the scale.
+> "It recommends 16 metres, labelled a space-filling check, because one model already
+> dominates. The predictions are now frozen. Linear says 33.5 seconds, square root 8.12,
+> quadratic 965. Nothing is revealed yet."
 
 **45 to 60 s.** Click **Reveal recorded measurement at 16 m**.
 
-> "The recorded periods are 7.68, 8.01 and 7.68 seconds, a mean of 7.79. Compared with
-> the frozen predictions, square root is closest, off by 0.33 seconds. But that's about
-> 11 times its own estimated uncertainty of a mean. So even the best model misses by more
-> than the noise model expects."
+> "The recorded mean is 7.79 seconds. Square root is closest. But it still missed by
+> about 11 times its own estimated uncertainty."
 
-An orange note in the panel says that even the closest prediction missed by 11.2 SDs of
-a mean.
+**60 to 75 s.** Click **Update models with the new observations**, then **Download record
+(JSON + CSV)**.
 
-**60 to 75 s.** Click **Update models with the new observations**. Then click **Download
-record (JSON + CSV)**, and point at the prediction history and the two downloaded files.
-
-> "Update is a separate click; nothing refits on its own. Square root still leads, but its
-> validation error rose from 0.025 to 0.166 seconds once 16 metres was included. The other
-> two models got much worse. The earlier prediction stays in the history. The record
-> stores the frozen predictions, the recorded values, and the order of the updates."
-
-The panel reads "What changed after adding 16 m", and each model's error change is marked
-"↑ worse". The download produces `nextlab-record-<id>.json` and `nextlab-observations-<id>.csv`.
+> "Update is a separate click. Square root still leads, but its validation error went up.
+> The frozen prediction stays in the history, and the record saves to two files."
 
 **75 to 90 s.**
 
-> "I benchmarked the choice rule in simulation, with the protocol committed before
-> running. At 24 observations, it beat random choice in 11 of 16 conditions. Against a
-> strong strategy that measures the endpoints and then the largest gaps, there was no
-> clear difference in 14 of 16. So the value is the workflow, not a better design. And
-> the main limit: on this real data the noise model is too simple, as the 11-SD miss
-> showed."
+> "In simulation, with the protocol committed first, it beat random choice in 11 of 16
+> conditions. It showed no clear advantage over a strong endpoints-then-gaps strategy. The
+> value is the workflow. The main limit is that the noise model is too simple for this data."
+
+What the screen shows at each step (checked against the live app on 2026-10-24):
+
+| Step | On screen |
+|---|---|
+| Start | Step 2, "Recommend", is current. The panel reads "Known now: 3 lengths, 9 period observations" and "Hidden for replay: 6 recorded lengths (0.809, 1.485, 2.437, 4, 8, 16 m)". The cards read Linear 0.136 s, Square root 0.025 s, Restricted quadratic 0.471 s. |
+| Recommend | "Next measurement: 16 m", with the label "Space-filling validation point: not chosen to tell the models apart" and "Why feasible". The frozen predictions are 33.5 s, 8.12 s and 965 s. The caption lists the two off-scale predictions. |
+| Reveal | "7.68, 8.01, 7.68 s … Mean 7.79 s". The errors are −25.7, −0.329 and −957 s, and there is an orange note: "Even the closest frozen prediction (Square root) missed by 11.2 SDs of a mean." |
+| Update | "Leading model unchanged: Square root". "Its validation error rose (0.025 s → 0.166 s)", and all three models are marked "↑ worse". The prediction history shows row 1. |
+| Download | Two files: `nextlab-record-<id>.json` and `nextlab-observations-<id>.csv`. |
+| Benchmark | Below the history: "Benchmark evidence (simulation, not pendulum data)", with the table at 11/5/0, 8/7/1 and 2/14/0. |
 
 ## If something goes wrong
 

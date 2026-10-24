@@ -1,0 +1,378 @@
+{
+  "record_id": "64bcd15ce4ea0c56b7217bc0a09e09bb092f7628a4e66388344ebeb1072c5cf1",
+  "exported_at": "2026-10-24T23:05:33.108Z",
+  "record": {
+    "format": "nextlab-experiment-record-2",
+    "api_version": "0.2.0",
+    "run_type": "recorded_data_replay",
+    "source": {
+      "label": "Recorded pendulum measurements",
+      "dataset_id": "fastR2-pendulum@350f183b",
+      "provenance": {
+        "name": "fastR2 Pendulum",
+        "description": "Pendulum length and reported period. The source describes each period as measured by averaging over several swings.",
+        "credit": "Calvin College physics students under Professor Steve Plath (as credited in the fastR2 documentation).",
+        "collected_by_nextlab_user": false,
+        "documentation_url": "https://rpruim.github.io/fastR2/reference/Pendulum.html",
+        "source_file_url": "https://raw.githubusercontent.com/rpruim/fastR2/main/data/pendulum.rda",
+        "package_metadata_url": "https://github.com/rpruim/fastR2/blob/main/DESCRIPTION",
+        "source_file_sha256": "4f288cadb6ad611b1eeb52ea92fd4d13b62356a0a490a28701e2add05de8c39a",
+        "package_license": "GPL (>= 2), as declared by the fastR2 package",
+        "x": {
+          "column": "length",
+          "label": "Pendulum length",
+          "unit": "m"
+        },
+        "y": {
+          "column": "period",
+          "label": "Reported period (average over several swings)",
+          "unit": "s"
+        },
+        "limitations": [
+          "Periods are reported averages over several swings, not individual swing timings.",
+          "delta.length is the stated length accuracy; it is not period uncertainty and is not plotted as a vertical error bar.",
+          "The initial fitting method treats length as exact.",
+          "No detailed collection protocol beyond the source documentation is known; swing amplitude and the number of swings averaged are not stated.",
+          "The 16 m setting is a historical recorded measurement, not a suggestion that a trainee can build that apparatus."
+        ]
+      },
+      "note": "Revealed values are recorded measurements from the source dataset, revealed one length at a time during a replay; they were not measured in this session. Unrevealed recorded values are not included."
+    },
+    "session_id": "8aa5c6e6034da6a431664b95c6d0d8a7",
+    "revision": "39e9a4fc38118232ac9873bd53bdfedd95911f088c81960425d92738971465e8",
+    "variables": {
+      "x": {
+        "label": "Pendulum length",
+        "unit": "m"
+      },
+      "y": {
+        "label": "Reported period",
+        "unit": "s"
+      }
+    },
+    "method": {
+      "version": "nextlab-core-1",
+      "models": [
+        {
+          "id": "linear",
+          "name": "Linear",
+          "formula": "y = a·x + b",
+          "note": ""
+        },
+        {
+          "id": "sqrt",
+          "name": "Square root",
+          "formula": "y = a·√x + b",
+          "note": ""
+        },
+        {
+          "id": "restricted_quadratic",
+          "name": "Restricted quadratic",
+          "formula": "y = a·x² + b",
+          "note": "Restricted quadratic: no separate linear term."
+        }
+      ],
+      "summary": "Each model is fitted to setting means with equal weight; grouped validation leaves one setting out; relative support is a heuristic weight from validation error, not a probability."
+    },
+    "feasible_settings": [
+      0.809,
+      1.485,
+      2.437,
+      4,
+      8
+    ],
+    "noise_assumption": {
+      "stated_response_sd": null,
+      "current_estimate": {
+        "source": "repeats",
+        "sd_individual": 0.10496030995889193,
+        "df": 8,
+        "settings_with_repeats": 4,
+        "mean_sd_by_setting": [
+          0.06059886320899281,
+          0.06059886320899281,
+          0.06059886320899281,
+          0.06059886320899281
+        ],
+        "representative_mean_variance": 0.0036722222222222226,
+        "representative_mean_sd": 0.06059886320899281,
+        "note": "Pooled from repeats at 4 setting(s) (8 degrees of freedom), assuming independent observations with one constant variance. Uncertainty of a setting mean is SD/√n per setting; the representative value averages σ²/n over measured settings."
+      }
+    },
+    "observations": [
+      {
+        "x": 0.101,
+        "y": 0.72,
+        "origin": "recorded_initial_subset",
+        "cycle": null
+      },
+      {
+        "x": 0.101,
+        "y": 0.67,
+        "origin": "recorded_initial_subset",
+        "cycle": null
+      },
+      {
+        "x": 0.101,
+        "y": 0.68,
+        "origin": "recorded_initial_subset",
+        "cycle": null
+      },
+      {
+        "x": 0.205,
+        "y": 1.01,
+        "origin": "recorded_initial_subset",
+        "cycle": null
+      },
+      {
+        "x": 0.205,
+        "y": 0.91,
+        "origin": "recorded_initial_subset",
+        "cycle": null
+      },
+      {
+        "x": 0.205,
+        "y": 1.01,
+        "origin": "recorded_initial_subset",
+        "cycle": null
+      },
+      {
+        "x": 0.411,
+        "y": 1.33,
+        "origin": "recorded_initial_subset",
+        "cycle": null
+      },
+      {
+        "x": 0.411,
+        "y": 1.41,
+        "origin": "recorded_initial_subset",
+        "cycle": null
+      },
+      {
+        "x": 0.411,
+        "y": 1.29,
+        "origin": "recorded_initial_subset",
+        "cycle": null
+      },
+      {
+        "x": 16,
+        "y": 7.68,
+        "origin": "revealed_recorded_value",
+        "cycle": 1
+      },
+      {
+        "x": 16,
+        "y": 8.01,
+        "origin": "revealed_recorded_value",
+        "cycle": 1
+      },
+      {
+        "x": 16,
+        "y": 7.68,
+        "origin": "revealed_recorded_value",
+        "cycle": 1
+      }
+    ],
+    "cycles": [
+      {
+        "order": 1,
+        "snapshot_id": "55bc9cb2034309585599653c910de21c1c0fae2a9c231180c51f1594c5b7cdef",
+        "context_revision": "94fa5c2229f2d700ca1a34b5c08241c217b1d6564050a4792bd9cadb8aa6c0ba",
+        "data_revision": "a53472aee10fe30a3712b80968972e4837753d335bcea29ccd3c55fea1c62093",
+        "frozen_at": "2026-10-24T23:05:32.855Z",
+        "selected_x": 16,
+        "selection": {
+          "kind": "space_filling",
+          "fallback_reason": "dominant_model",
+          "method": "Space-filling validation: the unmeasured setting farthest in x from every measured setting (maximin). Not chosen to distinguish models.",
+          "explanation": "Measure next at x = 16 m as a space-filling validation point: it is the unmeasured setting farthest from any measured setting (15.6 m away). Because Square root holds at least 0.99 of the relative support, disagreement is not used to choose; this point checks the models where data are sparse and is not chosen to distinguish them. Predictions at that setting: Linear 33.5 s (support < 0.001); Square root 8.12 s (support > 0.999); Restricted quadratic 965 s (support < 0.001). For reference, the weighted spread here is 4.95× the uncertainty of a setting mean, and 100% of the weighted spread comes from Linear (support < 0.001). Strongly down-weighted (support below 0.05): Linear, Restricted quadratic. Support is a heuristic from grouped validation error, not a probability that a model is true."
+        },
+        "diagnostic_state": {
+          "status": "ok",
+          "all_models_inadequate": false,
+          "separation": "separated",
+          "noise_source": "repeats",
+          "codes": []
+        },
+        "frozen_predictions": [
+          {
+            "id": "linear",
+            "name": "Linear",
+            "formula": "y = a·x + b",
+            "note": "",
+            "fitted": true,
+            "a": 2.0614387487278396,
+            "b": 0.5106494723873796,
+            "support": 0.00003284131505929983,
+            "strongly_down_weighted": true,
+            "grouped_cv_rmse": 0.13580627786232033,
+            "predicted_y": 33.49366945203281
+          },
+          {
+            "id": "sqrt",
+            "name": "Square root",
+            "formula": "y = a·√x + b",
+            "note": "",
+            "fitted": true,
+            "a": 2.016208702492086,
+            "b": 0.0545948725861336,
+            "support": 0.9999671586849408,
+            "strongly_down_weighted": false,
+            "grouped_cv_rmse": 0.025004951960205492,
+            "predicted_y": 8.119429682554477
+          },
+          {
+            "id": "restricted_quadratic",
+            "name": "Restricted quadratic",
+            "formula": "y = a·x² + b",
+            "note": "Restricted quadratic: no separate linear term.",
+            "fitted": true,
+            "a": 3.7664446237973204,
+            "b": 0.7256873569270312,
+            "support": 2.424272737174159e-56,
+            "strongly_down_weighted": true,
+            "grouped_cv_rmse": 0.4707928868588905,
+            "predicted_y": 964.935511049041
+          }
+        ],
+        "frozen_noise": {
+          "source": "repeats",
+          "sd_individual": 0.05088112507491246,
+          "df": 6,
+          "representative_mean_sd": 0.029376231258671722,
+          "note": "Pooled from repeats at 3 setting(s) (6 degrees of freedom), assuming independent observations with one constant variance. Uncertainty of a setting mean is SD/√n per setting; the representative value averages σ²/n over measured settings."
+        },
+        "acquisition": {
+          "kind": "space_filling",
+          "fallback_reason": "dominant_model",
+          "score": 0.021144253396710166,
+          "spread": 0.14541063715117325,
+          "separation_label": "separated",
+          "separation_ratio": 4.949941872078935,
+          "method": "Space-filling validation: the unmeasured setting farthest in x from every measured setting (maximin). Not chosen to distinguish models."
+        },
+        "later_observations": [
+          {
+            "x": 16,
+            "y": 7.68
+          },
+          {
+            "x": 16,
+            "y": 8.01
+          },
+          {
+            "x": 16,
+            "y": 7.68
+          }
+        ],
+        "comparison": {
+          "observed_mean": 7.789999999999999,
+          "n_observations": 3,
+          "setting_mean_sd": 0.029376231258671726,
+          "models": [
+            {
+              "id": "linear",
+              "name": "Linear",
+              "predicted_y": 33.49366945203281,
+              "error": -25.703669452032813,
+              "abs_error": 25.703669452032813,
+              "error_in_mean_sds": -874.9818595074278
+            },
+            {
+              "id": "sqrt",
+              "name": "Square root",
+              "predicted_y": 8.119429682554477,
+              "error": -0.329429682554478,
+              "abs_error": 0.329429682554478,
+              "error_in_mean_sds": -11.214157447689344
+            },
+            {
+              "id": "restricted_quadratic",
+              "name": "Restricted quadratic",
+              "predicted_y": 964.935511049041,
+              "error": -957.145511049041,
+              "abs_error": 957.145511049041,
+              "error_in_mean_sds": -32582.31127815268
+            }
+          ],
+          "closest_model": "sqrt",
+          "note": "Errors are observed mean − frozen prediction; the SD scale uses the noise estimate frozen in the snapshot (heuristic, not a calibrated test)."
+        },
+        "refit_after_observation": true
+      }
+    ],
+    "current_analysis": {
+      "status": "ok",
+      "data_revision": "96744314910df5161ad422939186ab71899ffbdb723b48ebd52c814bddb7bc00",
+      "models": [
+        {
+          "id": "linear",
+          "name": "Linear",
+          "formula": "y = a·x + b",
+          "note": "",
+          "fitted": true,
+          "a": 0.43103440392540526,
+          "b": 0.8985994673947495,
+          "failure": null,
+          "fit_rmse_setting_means": 0.1839173762610526,
+          "grouped_cv_mse": 165.24554326957232,
+          "grouped_cv_rmse": 12.854786784290603,
+          "support": 0,
+          "strongly_down_weighted": true,
+          "adequacy": {
+            "assessed": true,
+            "standardized_rms": 3.0349971356188643,
+            "conflicts_with_noise": true,
+            "note": "Heuristic: RMS of (setting mean − fitted value) / setting-mean SD; above 3 is flagged."
+          }
+        },
+        {
+          "id": "sqrt",
+          "name": "Square root",
+          "formula": "y = a·√x + b",
+          "note": "",
+          "fitted": true,
+          "a": 1.9233950103643909,
+          "b": 0.09780665171312952,
+          "failure": null,
+          "fit_rmse_setting_means": 0.012091081789389094,
+          "grouped_cv_mse": 0.027472171230871194,
+          "grouped_cv_rmse": 0.16574731138353707,
+          "support": 1,
+          "strongly_down_weighted": false,
+          "adequacy": {
+            "assessed": true,
+            "standardized_rms": 0.19952654470908934,
+            "conflicts_with_noise": false,
+            "note": "Heuristic: RMS of (setting mean − fitted value) / setting-mean SD; above 3 is flagged."
+          }
+        },
+        {
+          "id": "restricted_quadratic",
+          "name": "Restricted quadratic",
+          "formula": "y = a·x² + b",
+          "note": "Restricted quadratic: no separate linear term.",
+          "fitted": true,
+          "a": 0.026519126248781062,
+          "b": 1.0013097637748771,
+          "failure": null,
+          "fit_rmse_setting_means": 0.23004438428717744,
+          "grouped_cv_mse": 229032.00138084285,
+          "grouped_cv_rmse": 478.5728799052897,
+          "support": 0,
+          "strongly_down_weighted": true,
+          "adequacy": {
+            "assessed": true,
+            "standardized_rms": 3.7961831642584194,
+            "conflicts_with_noise": true,
+            "note": "Heuristic: RMS of (setting mean − fitted value) / setting-mean SD; above 3 is flagged."
+          }
+        }
+      ],
+      "diagnostics": [],
+      "all_models_inadequate": false,
+      "explanation": "Measure next at x = 8 m as a space-filling validation point: it is the unmeasured setting farthest from any measured setting (7.59 m away). Because Square root holds at least 0.99 of the relative support, disagreement is not used to choose; this point checks the models where data are sparse and is not chosen to distinguish them. Predictions at that setting: Linear 4.35 s (support < 0.001); Square root 5.54 s (support > 0.999); Restricted quadratic 2.7 s (support < 0.001). Strongly down-weighted (support below 0.05): Linear, Restricted quadratic. Support is a heuristic from grouped validation error, not a probability that a model is true."
+    }
+  },
+  "observations_csv": "Pendulum length (m),Reported period (s),origin,cycle\n0.101,0.72,recorded_initial_subset,\n0.101,0.67,recorded_initial_subset,\n0.101,0.68,recorded_initial_subset,\n0.205,1.01,recorded_initial_subset,\n0.205,0.91,recorded_initial_subset,\n0.205,1.01,recorded_initial_subset,\n0.411,1.33,recorded_initial_subset,\n0.411,1.41,recorded_initial_subset,\n0.411,1.29,recorded_initial_subset,\n16.0,7.68,revealed_recorded_value,1\n16.0,8.01,revealed_recorded_value,1\n16.0,7.68,revealed_recorded_value,1\n"
+}
