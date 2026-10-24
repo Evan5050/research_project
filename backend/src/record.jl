@@ -41,3 +41,25 @@ function freeze_predictions(a; created_at::AbstractString = string(Dates.now(Dat
 end
 
 JSON.lower(r::PredictionRecord) = (; (f => getfield(r, f) for f in fieldnames(PredictionRecord))...)
+
+"""
+    compare_to_frozen(models, ys; sd_individual = nothing)
+
+Compare frozen predictions (`models`: items with `id`, `name`, `predicted_y`) with the
+mean of newly revealed or entered observations `ys`. Errors are observed mean − frozen
+prediction. When the frozen noise estimate exists, errors are also given in units of the
+SD of a mean of `length(ys)` observations (a heuristic scale, not a calibrated test).
+"""
+function compare_to_frozen(models, ys::AbstractVector{Float64}; sd_individual::Union{Nothing,Real} = nothing)
+    n = length(ys)
+    ȳ = mean(ys)
+    se = sd_individual === nothing || sd_individual <= 0 ? nothing : sd_individual / sqrt(n)
+    rows = [(id = m.id, name = m.name, predicted_y = m.predicted_y, error = ȳ - m.predicted_y,
+             abs_error = abs(ȳ - m.predicted_y), error_in_mean_sds = se === nothing ? nothing : (ȳ - m.predicted_y) / se)
+            for m in models if m.predicted_y !== nothing]
+    closest = isempty(rows) ? nothing : argmin(r -> r.abs_error, rows).id
+    return (observed_mean = ȳ, n_observations = n, setting_mean_sd = se, models = rows, closest_model = closest,
+            note = se === nothing ?
+                "Errors are observed mean − frozen prediction. No frozen noise estimate, so errors are not scaled." :
+                "Errors are observed mean − frozen prediction; the SD scale uses the noise estimate frozen in the snapshot (heuristic, not a calibrated test).")
+end

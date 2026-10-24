@@ -47,7 +47,7 @@ end
     end
 
     @testset "browser payload and engine inputs carry no hidden period" begin
-        payload = JSON.json(NextLab.pendulum_payload(s))
+        payload = JSON.json(NextLab.public_state(s))
         @test isempty(intersect(Set(numbers_in(payload)), hidden_periods))
         inputs = engine_inputs(s)
         @test isempty(intersect(Set(inputs.y), hidden_periods))

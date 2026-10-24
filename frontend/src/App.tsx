@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { fetchHealth, fetchPendulum, resetPendulum, type Health, type PendulumPayload } from './api'
+import { fetchHealth, startDemo, type Health, type StartResponse } from './api'
 
 type Loadable<T> = { kind: 'loading' } | { kind: 'ok'; value: T } | { kind: 'error'; message: string }
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-function DatasetPanel({ data, onReset }: { data: PendulumPayload; onReset: () => void }) {
-  const { provenance: p, state: s } = data
+function DatasetPanel({ data, onReset }: { data: StartResponse; onReset: () => void }) {
+  const { dataset: p, context: s, counts } = data
   return (
     <section>
       <h2>Built-in data: {p.name}</h2>
@@ -19,8 +19,8 @@ function DatasetPanel({ data, onReset }: { data: PendulumPayload; onReset: () =>
       <h3>Declared starting scenario</h3>
       <p>
         Starts with the three shortest recorded lengths (chosen by length order, not by outcome).
-        Measured so far: <strong>{s.lengths_measured} lengths</strong>,{' '}
-        <strong>{s.observations} reported period observations</strong>.
+        Measured so far: <strong>{counts.lengths_measured} lengths</strong>,{' '}
+        <strong>{counts.observations} reported period observations</strong>.
       </p>
       <table>
         <thead>
@@ -43,7 +43,7 @@ function DatasetPanel({ data, onReset }: { data: PendulumPayload; onReset: () =>
         </tbody>
       </table>
       <p>
-        Remaining recorded lengths ({s.remaining_lengths}), periods not yet revealed:{' '}
+        Remaining recorded lengths ({counts.remaining_lengths}), periods not yet revealed:{' '}
         {s.candidate_x.map((x) => `${x} ${p.x.unit}`).join(', ')}
       </p>
       <button onClick={onReset}>Reset to starting scenario</button>
@@ -60,13 +60,13 @@ function DatasetPanel({ data, onReset }: { data: PendulumPayload; onReset: () =>
 
 function App() {
   const [health, setHealth] = useState<Loadable<Health>>({ kind: 'loading' })
-  const [pendulum, setPendulum] = useState<Loadable<PendulumPayload>>({ kind: 'loading' })
+  const [pendulum, setPendulum] = useState<Loadable<StartResponse>>({ kind: 'loading' })
 
   const load = () => {
     fetchHealth()
       .then((value) => setHealth({ kind: 'ok', value }))
       .catch((err: unknown) => setHealth({ kind: 'error', message: errorText(err) }))
-    fetchPendulum()
+    startDemo()
       .then((value) => setPendulum({ kind: 'ok', value }))
       .catch((err: unknown) => setPendulum({ kind: 'error', message: errorText(err) }))
   }
@@ -78,7 +78,7 @@ function App() {
   }
 
   const reset = () =>
-    resetPendulum()
+    startDemo()
       .then((value) => setPendulum({ kind: 'ok', value }))
       .catch((err: unknown) => setPendulum({ kind: 'error', message: errorText(err) }))
 

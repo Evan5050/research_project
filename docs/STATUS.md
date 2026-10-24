@@ -1,6 +1,6 @@
 # NextLab status
 
-_Last updated: 2026-10-24 16:21 EDT. Milestone: Prompt 05, benchmark run._
+_Last updated: 2026-10-24 16:35 EDT. Milestone: Prompt 06, JSON API connected to the core._
 
 ## Deadline
 - **Earliest submission deadline: UNKNOWN.** The event information has not been supplied in
@@ -9,19 +9,24 @@ _Last updated: 2026-10-24 16:21 EDT. Milestone: Prompt 05, benchmark run._
   for demo and submission work.
 
 ## Git
-- `main` holds the user's milestone commits up to `542c727`, which includes the core and the /tdd fix.
-- The local branch `benchmark` has two more commits:
-  - `dac3e46` pre-registers the protocol and code, before any run
-  - `d1d7481` is a metadata-only fix
-- Not pushed. The results write-up (`docs/BENCHMARK.md` Results, `docs/SPEC.md`, this file)
-  and `results/` are not committed.
+- Current branch `benchmark`, at `f41ba42` (the user's benchmark commit). `main` is at `542c727`.
+- This milestone's API work is uncommitted and nothing has been pushed.
 
 ## Works now (verified)
 - **Toolchain:** Julia 1.13.2 (Homebrew `juliaup`). `backend/` package `NextLab` uses HTTP 2.12.3,
   JSON 1.12.2, CSV 1.1.0, plus SHA, Dates, Statistics, LinearAlgebra and Random. Vite 8,
   React 19 and TypeScript 6 are in `frontend/`.
-- **API:** `GET /api/health`, `GET /api/pendulum` and `POST /api/pendulum/reset`. The
-  frontend shows provenance and replay state. The core is not exposed over HTTP yet.
+- **API v0.2.0** (stateless; contract in `docs/API.md`; types in `frontend/src/api.ts`):
+  - health and ready
+  - demo start/reset and demo reveal
+  - analyze (with curves)
+  - recommend (immutable snapshot with a content-hash id)
+  - observe (manual entry, upload mode)
+  - upload (CSV parsed in Julia), feasible grid, export, and the benchmark summary
+  - A revision and session id invalidate stale recommendations and responses. Reveal and observe never refit.
+  - Limits: 2 MB body and 2,000 rows. The server binds to 127.0.0.1 only.
+  - The old `/api/pendulum` routes and the server-side session were removed.
+- **Frontend:** uses `/api/demo/start`. The full UI loop is not built yet.
 - **Data and replay:** fastR2 snapshot, provenance, and the replay engine. Its only gateway
   to the core is `engine_inputs`. See `data/README.md`.
 - **Scientific core** (`nextlab-core-1`): see SPEC "Numerical method". Added in this
@@ -34,12 +39,22 @@ _Last updated: 2026-10-24 16:21 EDT. Milestone: Prompt 05, benchmark run._
 
 ## Commands run and their outcomes
 - `julia --project=backend --threads=auto,1 -e 'using Pkg; Pkg.test()'`:
-  - 245/245 pass. The suites are snapshot 10, replay 21, core 150, benchmark 50 and API 14.
+  - 343/343 pass, with no known-broken markers. The suites are snapshot 10, replay 21,
+    core 150, benchmark 50 and API 112.
+  - The API tests run against a real server. They cover the full demo loop; no unrevealed
+    periods in the start or recommend payloads; reveal returning only the selected length;
+    browser-style JSON numbers accepted; stale (409) and tampered (422) snapshots;
+    field-level context errors; 400 and 413; CSV with BOM, CRLF and quotes; row-numbered
+    CSV errors; impossible bounds; out-of-range JSON numbers in every numeric field; the
+    upload observe flow; and the benchmark route.
   - The benchmark checks cover equal costs, disjoint test inputs, fixed-seed repeatability,
     tampering with unrequested rows (no effect for any policy), noise independent of
     policy random calls, one shared predictor, and win/tie counting.
 - `run_benchmark.jl smoke 5`: no failures (crash and runtime check only).
 - `run_benchmark.jl full 100`: 0 predictor failures and 0 NextLab step failures.
+- `backend/scripts/api_smoke.jl` against the live server on :8080, rerun after the numeric fix: all 8 checks pass.
+- `scan_hidden.jl frontend/dist frontend/src`: no unrevealed periods.
+- `npm run lint` is clean, and `npm run build` passes.
 
 ## Benchmark result
 At 8 settings (24 observations), comparing RMSE against the noiseless truth at 200 held-out inputs:
@@ -54,6 +69,13 @@ At 8 settings (24 observations), comparing RMSE against the noiseless truth at 2
   limits. Full detail is in `docs/BENCHMARK.md`.
 
 ## Fixed via /tdd
+- **Out-of-range JSON numbers passed validation.** JSON.jl parses `1e999` and huge integers
+  as finite `BigFloat`/`BigInt`, which became ±Inf only after conversion. `/api/feasible`
+  returned HTTP 500; other fields accepted Inf. Now every numeric field goes through
+  `json_float`: convert, catch conversion failure, check finiteness after conversion,
+  and return a 422 field error.
+  - Failing before: API 89 pass, 23 fail.
+  - Passing after: API 112/112, full suite 343/343, and the live smoke check passes.
 - **Overflow in `fit_family` scaling** (centred features around 1e160 were reported as
   `:rank_deficient`). The fix divides by max|f| before centring.
   - Failing before: core 148 pass, 2 fail.
@@ -66,13 +88,12 @@ At 8 settings (24 observations), comparing RMSE against the noiseless truth at 2
   length, so constant variance is an approximation.
 
 ## Background servers
-Both dev servers (Vite on 5173, Julia on 8080) were stopped by the background time limit.
-Restart them with the commands in `README.md` when UI work resumes.
+The Julia server on 127.0.0.1:8080 (API plus built frontend) is running in the background. Vite is not running.
 
 ## Not built yet
-- core endpoints and UI: analyze, freeze, reveal gated on a frozen record, comparison, refit
-- new-observation mode, CSV upload with bounds
-- plots (Plotly not installed), record download
+- UI for the loop: analyze, freeze, reveal gated on a frozen snapshot, comparison, refit (the API exists)
+- UI for upload and new-observation mode (the API exists)
+- plots (Plotly not installed), record download UI (the export API exists)
 - a license for NextLab's own code
 
 ## Next

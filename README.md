@@ -15,12 +15,18 @@ npm --prefix frontend ci                           # Node 26, npm 11
 julia --project=backend --threads=auto,1 backend/scripts/serve.jl   # API on :8080
 npm --prefix frontend run dev -- --host 127.0.0.1                   # UI on :5173, proxies /api
 ```
-Open http://127.0.0.1:5173. The page should say "Julia backend responded".
+Open http://127.0.0.1:5173. The page should say "Julia backend responded" and show the demo start.
 
 ## Local demo (one process)
 ```sh
 npm --prefix frontend run build
 julia --project=backend --threads=auto,1 backend/scripts/serve.jl   # UI and API on :8080
+```
+
+## API
+Contract: `docs/API.md`. Live smoke check against a running server:
+```sh
+julia --project=backend backend/scripts/api_smoke.jl http://127.0.0.1:8080
 ```
 
 ## Tests

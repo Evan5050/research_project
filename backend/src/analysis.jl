@@ -315,3 +315,19 @@ function ensemble_predict(a, xs::AbstractVector{<:Real})
     end
     return all(isfinite, out) ? out : nothing
 end
+
+"""
+    model_curves(a, lo, hi; n = 101) -> (; x, models, ensemble)
+
+Each fitted model's curve and the ensemble mean on an even grid over [lo, hi], for plotting.
+Curves that are not finite everywhere are returned as `nothing`.
+"""
+function model_curves(a, lo::Real, hi::Real; n::Integer = 101)
+    xs = collect(range(Float64(lo), Float64(hi); length = n))
+    curve(m) = begin
+        ys = m.a .* model_family(m.id).feature.(xs) .+ m.b
+        all(isfinite, ys) ? ys : nothing
+    end
+    return (x = xs, models = [(id = m.id, y = m.fitted ? curve(m) : nothing) for m in a.models],
+            ensemble = ensemble_predict(a, xs))
+end
