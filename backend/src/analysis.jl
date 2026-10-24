@@ -298,3 +298,20 @@ function explain(rec, models, noise, units, all_inadequate, lead_name)
     noise.source == :unknown && push!(parts, noise.note)
     return join(parts, " ")
 end
+
+"""
+    ensemble_predict(a, xs) -> Vector{Float64} or nothing
+
+Support-weighted ensemble predicted mean Σ_m w_m (a_m f_m(x) + b_m) over models with
+support. `nothing` when no model has support or a prediction is not finite.
+"""
+function ensemble_predict(a, xs::AbstractVector{<:Real})
+    ms = [m for m in a.models if m.fitted && m.support !== nothing]
+    isempty(ms) && return nothing
+    out = zeros(length(xs))
+    for m in ms
+        f = model_family(m.id).feature
+        out .+= m.support .* (m.a .* f.(Float64.(xs)) .+ m.b)
+    end
+    return all(isfinite, out) ? out : nothing
+end

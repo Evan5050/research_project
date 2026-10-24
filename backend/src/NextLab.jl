@@ -14,5 +14,6 @@ include("record.jl")
 include("pendulum.jl")
 include("replay.jl")
 include("api.jl")
+include("benchmark.jl")
 
 end # module NextLab

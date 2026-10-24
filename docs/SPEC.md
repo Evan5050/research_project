@@ -71,7 +71,7 @@ parameter for hidden outcomes, a true formula or test outcomes. The replay adapt
 - Transform first. Then divide f by max|f| (so squaring cannot overflow for large
   finite f), centre and scale by the population SD, and solve
   `[1 z] β = ȳ` by QR (`qr(A) \ ȳ`). No explicit inverse.
-- Report a = β₂/s and b = β₁ − a·μ.
+- Convert back to the original formula: a = β₂/(s·max|f|) and b = β₁ − β₂·μ/s.
 - Failures are reported as diagnostics, never as NaN coefficients:
   `:nonfinite_feature`, `:degenerate_range` (s ≤ 1e-12·|μ|), `:rank_deficient`
   (|R₂₂| ≤ 1e-10·|R₁₁|), and non-finite coefficients or fitted values.
@@ -121,6 +121,9 @@ parameter for hidden outcomes, a true formula or test outcomes. The replay adapt
   - A model above 3 is flagged as conflicting with the measured variability.
   - If every supported model is flagged, the result says no candidate fits adequately. It never claims a law has been found.
 - **No unmeasured candidate** gives `:no_candidates`: a clean completed state.
+
+**Ensemble predicted mean:** `ensemble_predict(a, xs)` = Σ_m w_m (a_m f_m(x) + b_m) over
+the supported models. The benchmark uses it for every policy. It is `nothing` when it is undefined or not finite.
 
 **Prediction record:** `freeze_predictions(analysis)` returns an immutable
 `PredictionRecord`. It is built only from scalars, strings, symbols and tuples, and holds:
