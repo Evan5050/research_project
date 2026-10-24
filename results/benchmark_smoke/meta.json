@@ -1,0 +1,41 @@
+{
+  "protocol_version": "nextlab-benchmark-1",
+  "method_version": "nextlab-core-1",
+  "tag": "smoke",
+  "seeds": "1:5",
+  "n_conditions": 16,
+  "policies": [
+    "nextlab",
+    "random",
+    "preplanned_even",
+    "endpoint_maximin"
+  ],
+  "n_run_rows": 1920,
+  "n_predictor_failed": 0,
+  "n_nextlab_failures": 0,
+  "protocol_sha256": "c0c6a16cf744a6f3966bc67a94c2bc9a7ed0b58888b950914c309bc12a594e5e",
+  "git_commit": "dac3e46c883f64be00f61dbfc5cbdd5d520d4523",
+  "git_worktree_dirty": true,
+  "julia_version": "1.13.2",
+  "threads": 11,
+  "runtime_seconds": 3.697175209,
+  "preplanned_sequences": {
+    "L1_middle_cluster": [
+      0.3,
+      0.5,
+      0.6,
+      0.9,
+      1.1
+    ],
+    "L2_ends_middle": [
+      0.3,
+      0.5,
+      0.65,
+      0.9,
+      1.1
+    ]
+  },
+  "tie_tolerance": 1.0e-10,
+  "bootstrap_resamples": 2000,
+  "target": "RMSE of the support-weighted ensemble predicted mean vs the noiseless generating relationship at 200 held-out test inputs"
+}

@@ -174,6 +174,11 @@ Build Prompt 05 is authoritative:
 The protocol is committed to git before the first run. That the recommender beats the
 baselines is a **hypothesis to test**. Whatever the result, it is reported.
 
+**Result** (`docs/BENCHMARK.md`): at 8 settings, NextLab beat random in 11/16 conditions
+and preplanned in 8/16. It showed no clear advantage over endpoint-first + maximin
+(14/16 no clear difference). Position NextLab around the transparent workflow and
+measured limits, not superior design.
+
 ## Six design criteria
 None of these is satisfied yet; each needs evidence.
 1. Effort removed
@@ -183,8 +188,9 @@ None of these is satisfied yet; each needs evidence.
 5. Bounded scope linked to a larger purpose
 6. Technical choices that fit the problem
 
-Missing evidence so far: a trainee trying the tool, a prior-art check against existing
-active-learning and experimental-design tools, and the benchmark result.
+Missing evidence so far: a trainee trying the tool, and a prior-art check against existing
+active-learning and experimental-design tools. The benchmark result is in, and it does not support
+a design-superiority claim.
 
 ## Acceptance checks
 - The recommender's output does not change when unrevealed y values are permuted.
