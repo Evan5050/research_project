@@ -28,7 +28,8 @@ meta = (protocol_version = B.PROTOCOL_VERSION, method_version = NextLab.METHOD_V
         n_run_rows = length(runs), n_predictor_failed = count(r -> r.predictor_failed, runs),
         n_nextlab_failures = count(r -> r.nextlab_failure, runs),
         protocol_sha256 = bytes2hex(sha256(protocol_text)),
-        git_commit = git(`rev-parse HEAD`), git_worktree_dirty = !isempty(git(`status --porcelain`)),
+        git_commit = git(`rev-parse HEAD`),
+        git_worktree_dirty_outside_results = !isempty(git(`status --porcelain -- . :!results`)),
         julia_version = string(VERSION), threads = Threads.nthreads(), runtime_seconds = elapsed,
         preplanned_sequences = B.PLANS, tie_tolerance = B.TIE_TOL, bootstrap_resamples = B.BOOT_B,
         target = "RMSE of the support-weighted ensemble predicted mean vs the noiseless generating relationship at 200 held-out test inputs")
