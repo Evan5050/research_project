@@ -1,6 +1,6 @@
 # NextLab status
 
-_Last updated: 2026-10-24 18:55 EDT. Milestone: Prompt 09, acceptance audit (see `docs/ACCEPTANCE.md`)._
+_Last updated: 2026-10-24 18:15 EDT. Milestone: Prompt 08, the uploaded-data workflow and experiment export._
 
 ## Deadline
 - **Earliest submission deadline: UNKNOWN.** The event information has not been supplied in
@@ -9,8 +9,8 @@ _Last updated: 2026-10-24 18:55 EDT. Milestone: Prompt 09, acceptance audit (see
   for demo and submission work.
 
 ## Git
-- Current branch `benchmark`, at `e97cf09` (the user's upload/export commit). `main` is at `542c727`.
-- This milestone's audit fixes are uncommitted and nothing has been pushed.
+- Current branch `benchmark`, at `bf728f9` (the user's UI commit). `main` is at `542c727`.
+- This milestone's upload and export work is uncommitted and nothing has been pushed.
 
 ## Works now (verified)
 - **Toolchain:** Julia 1.13.2 (Homebrew `juliaup`). `backend/` package `NextLab` uses HTTP 2.12.3,
@@ -62,8 +62,8 @@ _Last updated: 2026-10-24 18:55 EDT. Milestone: Prompt 09, acceptance audit (see
 
 ## Commands run and their outcomes
 - `julia --project=backend --threads=auto,1 -e 'using Pkg; Pkg.test()'`:
-  - 382/382 pass, with no known-broken markers. The suites are snapshot 10, replay 21, core 150,
-    benchmark 50, snapshot hashing 4 and API 147.
+  - 373/373 pass, with no known-broken markers. The suites are snapshot 10, replay 21,
+    core 150, benchmark 50 and API 142.
   - The API tests run against a real server. They cover the full demo loop; no unrevealed
     periods in the start or recommend payloads; reveal returning only the selected length;
     browser-style JSON numbers accepted; stale (409) and tampered (422) snapshots;
@@ -81,12 +81,7 @@ _Last updated: 2026-10-24 18:55 EDT. Milestone: Prompt 09, acceptance audit (see
   - the Plotly vendor chunk has 22 matches, identical to the unmodified upstream
     `plotly-basic.min.js` (SVG icon path coordinates, not data)
 - `npm run lint`: 0 warnings. `npm run build` passes.
-- `frontend/scripts/browser-check.mjs`, headless Brave at 1366×768 and 1280×720: 64/64 pass (exit 0).
-  It now also checks:
-  - displayed and exported predictions equal the raw `/api/recommend` response
-  - double clicks on every action
-  - a late response after a dataset switch
-  - page errors
+- `frontend/scripts/browser-check.mjs`, headless Brave at 1366×768 and 1280×720: all checks pass.
   - the full cycle (16 m → 7.68, 8.01, 7.68 s, mean 7.79 s → update), the second recommendation (8 m), and the replay run to completion (6 rows, then "Replay complete")
   - axis labels, legend, model cards, and the decision above the fold
   - one request from a same-tick double click
@@ -114,23 +109,7 @@ At 8 settings (24 observations), comparing RMSE against the noiseless truth at 2
   no design advantage. Position NextLab around the transparent workflow and its measured
   limits. Full detail is in `docs/BENCHMARK.md`.
 
-## Audit fixes (browser reproduction failed before, passes after)
-- Apply settings is disabled while a request is in flight.
-- Zero-variability repeats show the backend's reason, not "noise unknown".
-- No Recommend action is offered when no model can be fitted.
-- Upload-mode wording no longer says "length".
-- Benchmark results are flagged in the API and UI if their method version differs from the running one.
-
 ## Fixed via /tdd
-- **Negative zero broke snapshot verification.** Fits can return `a = -0.0` (for example,
-  constant-response uploads), and browsers serialize `-0` as `0`. As a result, the unaltered
-  snapshot was rejected ("snapshot was altered"), and a context containing a `-0.0` value got
-  a different revision after the round trip. `normalize` now maps signed zero to `0.0` before
-  hashing, which covers both snapshot IDs and context revisions.
-  - Failing before: API tests 148 pass, 3 fail (the hash, observe 422, the revision mismatch).
-    Browser check: 3 FAIL, exit 1 (measurement rejected, so update and export were never reached).
-  - Passing after: API 151/151, full suite 382/382, browser check 64/64 (exit 0), and the smoke check passes.
-  - Detection of altered snapshots is unchanged (the tampering tests and the 5e-324 change test pass).
 - **Out-of-range JSON numbers passed validation.** JSON.jl parses `1e999` and huge integers
   as finite `BigFloat`/`BigInt`, which became ±Inf only after conversion. `/api/feasible`
   returned HTTP 500; other fields accepted Inf. Now every numeric field goes through

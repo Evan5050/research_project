@@ -67,7 +67,7 @@ export function ModelCards({ models, yUnit }: { models: ModelResult[]; yUnit: st
               <dd>
                 a = {sig(m.a)}, b = {sig(m.b)}
               </dd>
-              <dt title="Each measured setting is left out in turn (all its repeats together) and predicted from the rest.">
+              <dt title="Each measured length is left out in turn (all its repeats together) and predicted from the rest.">
                 Validation error
               </dt>
               <dd>{m.grouped_cv_rmse === null ? 'n/a' : `${withUnit(m.grouped_cv_rmse, yUnit)} RMSE`}</dd>
@@ -150,7 +150,7 @@ export function RecommendationPanel({
       </p>
       <p>
         {sep.label === 'unassessed' ? (
-          <>{sep.note}</>
+          <>Measurement noise is unknown, so the model spread cannot be compared with measurement uncertainty.</>
         ) : (
           <>
             Support-weighted model spread here: {withUnit(r.spread, units.y)}, {sig(sep.ratio)}× the uncertainty of a
@@ -372,7 +372,7 @@ export function Assumptions({ analysis, dataset }: { analysis: Analysis; dataset
           {n && n.source !== 'unknown' ? (
             <p>
               Variation among repeats: SD of individual observations {withUnit(n.sd_individual, u.y)} (pooled from{' '}
-              {n.settings_with_repeats} repeated settings, {n.df} degrees of freedom). Uncertainty of a setting mean: SD/√n, typically{' '}
+              {n.settings_with_repeats} lengths, {n.df} degrees of freedom). Uncertainty of a setting mean: SD/√n, typically{' '}
               {withUnit(n.representative_mean_sd, u.y)}. Assumes independent observations with one constant variance.
             </p>
           ) : (
@@ -406,9 +406,9 @@ export function Assumptions({ analysis, dataset }: { analysis: Analysis; dataset
         <div>
           <h3>Method</h3>
           <ul>
-            <li>Each model is fitted to the mean at each distinct input value, with every value weighted equally. Inputs are treated as exact.</li>
+            <li>Each model is fitted to the mean at each length, with every length weighted equally. Length is treated as exact.</li>
             <li>
-              Validation error leaves one whole input value out (all its repeats) and predicts it from the others. It is error at an unseen setting, not the in-sample fit.
+              Validation error leaves one whole length out (all its repeats) and predicts it from the others.
             </li>
             <li>
               Relative support = exp(−(L − min L)/(2s²)), from validation error L. It is a heuristic weight, not the
@@ -494,13 +494,7 @@ export function BenchmarkSection() {
               ))}
             </tbody>
           </table>
-          {!b.value.results_match_current_method && (
-            <p className="callout warn">
-              These saved results were produced by method {String(b.value.meta.method_version)}; the running method is{' '}
-              {b.value.current_method_version}. Rerun the benchmark before citing them.
-            </p>
-          )}
-          <p hidden={!b.value.results_match_current_method}>
+          <p>
             Reading: NextLab beat random choice in most conditions but showed no clear advantage over the stronger
             endpoints-then-gaps strategy; at smaller budgets it was sometimes worse. Its value here is the transparent
             freeze-reveal-update record, not a better experimental design.

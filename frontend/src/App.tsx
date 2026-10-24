@@ -184,7 +184,7 @@ function App() {
   const outside = cands.filter((x) => x < measured[0] || x > measured[1]).length
 
   const primaryLabel =
-    step === 'done' || (step === 'reveal' && !demo) || (step === 'recommend' && an !== null && an.status !== 'ok' && an.status !== 'no_candidates')
+    step === 'done' || (step === 'reveal' && !demo)
       ? null
       : step === 'compare'
         ? s.pending ? 'Comparing models…' : 'Compare models'
@@ -380,7 +380,7 @@ function App() {
                 </section>
               )
             )}
-            {!demo && ctx && <SettingsEditor key={s.revision ?? ''} context={ctx} locked={s.outcome !== null} busy={busy} onApply={onApplySettings} />}
+            {!demo && ctx && <SettingsEditor key={s.revision ?? ''} context={ctx} locked={s.outcome !== null} onApply={onApplySettings} />}
           </aside>
         </main>
       )}

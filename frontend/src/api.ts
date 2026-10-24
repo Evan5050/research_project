@@ -231,8 +231,6 @@ export type ExportResponse = {
 }
 export type BenchmarkResponse = {
   meta: Record<string, unknown>
-  current_method_version: string
-  results_match_current_method: boolean
   primary_endpoint: { n_settings: number; n_observations: number }
   verdicts: { baseline: string; better: number; no_clear: number; worse: number }[]
   paired: Record<string, string | number | null>[]

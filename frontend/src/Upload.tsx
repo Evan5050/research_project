@@ -256,12 +256,10 @@ export function UploadForm({ onLoaded, disabled }: { onLoaded: (r: UploadRespons
 export function SettingsEditor({
   context,
   locked,
-  busy,
   onApply,
 }: {
   context: ExperimentContext
   locked: boolean
-  busy: boolean
   onApply: (req: ReturnType<typeof feasibleRequest>['req'], sd: number | null) => Promise<FieldError[]>
 }) {
   const xs = context.candidate_x
@@ -294,9 +292,7 @@ export function SettingsEditor({
             Response noise SD{context.y_unit ? ` (${context.y_unit})` : ''}{' '}
             <input aria-label="Response noise SD" value={sd} onChange={(e) => setSd(e.target.value)} placeholder="unknown" />
           </label>
-          <button onClick={() => void apply()} disabled={busy}>
-            Apply settings
-          </button>
+          <button onClick={() => void apply()}>Apply settings</button>
         </>
       )}
       <FieldErrors errors={errors} />
