@@ -15,7 +15,6 @@ import type {
   Provenance,
   RecommendResponse,
   Snapshot,
-  StartResponse,
 } from './api'
 
 export type Pending = null | 'start' | 'analyze' | 'recommend' | 'reveal' | 'update'
@@ -31,6 +30,7 @@ export type Cycle = {
 
 export type State = {
   epoch: number
+  mode: 'demo' | 'upload'
   pending: Pending
   error: UiError | null
   dataset: Provenance | null
@@ -47,6 +47,7 @@ export type State = {
 
 export const initialState: State = {
   epoch: 0,
+  mode: 'demo',
   pending: null,
   error: null,
   dataset: null,
@@ -62,10 +63,11 @@ export const initialState: State = {
 }
 
 export type Action =
-  | { type: 'reset'; epoch: number }
+  | { type: 'reset'; epoch: number; mode: 'demo' | 'upload'; loading: boolean }
   | { type: 'request'; epoch: number; pending: Exclude<Pending, null> }
   | { type: 'failed'; epoch: number; error: UiError }
-  | { type: 'started'; epoch: number; start: StartResponse }
+  | { type: 'started'; epoch: number; context: ExperimentContext; revision: string; dataset: Provenance | null }
+  | { type: 'contextChanged'; epoch: number; context: ExperimentContext; revision: string }
   | { type: 'analyzed'; epoch: number; resp: AnalyzeResponse }
   | { type: 'recommended'; epoch: number; resp: RecommendResponse }
   | { type: 'revealed'; epoch: number; resp: OutcomeResponse }
@@ -75,7 +77,7 @@ const current = (s: State, r: { revision: string; session_id: string }) =>
   s.context !== null && r.revision === s.revision && r.session_id === s.context.session_id
 
 export function reducer(s: State, a: Action): State {
-  if (a.type === 'reset') return { ...initialState, epoch: a.epoch, pending: 'start' }
+  if (a.type === 'reset') return { ...initialState, epoch: a.epoch, mode: a.mode, pending: a.loading ? 'start' : null }
   if (a.epoch !== s.epoch) return s // stale: requested before the last reset
   switch (a.type) {
     case 'request':
@@ -86,11 +88,16 @@ export function reducer(s: State, a: Action): State {
       return {
         ...initialState,
         epoch: s.epoch,
+        mode: s.mode,
         pending: null,
-        dataset: a.start.dataset,
-        context: a.start.context,
-        revision: a.start.revision,
+        dataset: a.dataset,
+        context: a.context,
+        revision: a.revision,
       }
+    case 'contextChanged':
+      // New feasible settings or noise assumption: any pending recommendation is void.
+      if (s.outcome) return s
+      return { ...s, context: a.context, revision: a.revision, snapshot: null, recommendation: null, analysis: null, previous: null, complete: false }
     case 'analyzed':
       if (!current(s, a.resp)) return s
       return { ...s, pending: null, analysis: a.resp }

@@ -1,6 +1,6 @@
 # NextLab status
 
-_Last updated: 2026-10-24 17:06 EDT. Milestone: Prompt 07, browser workflow for the built-in pendulum demo._
+_Last updated: 2026-10-24 18:15 EDT. Milestone: Prompt 08, the uploaded-data workflow and experiment export._
 
 ## Deadline
 - **Earliest submission deadline: UNKNOWN.** The event information has not been supplied in
@@ -9,8 +9,8 @@ _Last updated: 2026-10-24 17:06 EDT. Milestone: Prompt 07, browser workflow for 
   for demo and submission work.
 
 ## Git
-- Current branch `benchmark`, at `54356a0` (the user's API commit). `main` is at `542c727`.
-- This milestone's UI work is uncommitted and nothing has been pushed.
+- Current branch `benchmark`, at `bf728f9` (the user's UI commit). `main` is at `542c727`.
+- This milestone's upload and export work is uncommitted and nothing has been pushed.
 
 ## Works now (verified)
 - **Toolchain:** Julia 1.13.2 (Homebrew `juliaup`). `backend/` package `NextLab` uses HTTP 2.12.3,
@@ -24,6 +24,8 @@ _Last updated: 2026-10-24 17:06 EDT. Milestone: Prompt 07, browser workflow for 
   - observe (manual entry, upload mode)
   - upload (CSV parsed in Julia), feasible grid, export, and the benchmark summary
   - whitelisted benchmark file downloads (`/api/benchmark/files/{name}`)
+  - CSV preview (`/api/upload/preview`), the sample file (`/api/sample.csv`), and feasible settings from a range with step and/or a list (deduplicated, at most 201)
+  - experiment record v2 (`/api/export`) with observation origins, ordered cycles, frozen predictions and a plain observations CSV
   - curves on a geometric grid that includes the measured-range ends
   - A revision and session id invalidate stale recommendations and responses. Reveal and observe never refit.
   - Limits: 2 MB body and 2,000 rows. The server binds to 127.0.0.1 only.
@@ -40,6 +42,14 @@ _Last updated: 2026-10-24 17:06 EDT. Milestone: Prompt 07, browser workflow for 
     and noise-unknown, plus prediction history, an assumptions panel, record download and a
     benchmark section (labelled simulation).
   - Plotly basic 4.1.2 (MIT) is loaded as a separate vendor chunk.
+- **"Use my data"** (`frontend/src/Upload.tsx`, `inputs.ts`):
+  - Load a local CSV and preview it through the Julia parser; pick the x and y columns, labels and units (labels only, no conversion).
+  - Set feasible settings with a range and step and/or an explicit list, defaulting to the observed range of the chosen x column. Settings beyond the observed range are counted and labelled as extrapolation.
+  - An optional noise SD, explained in place; noise is labelled unknown when there are no repeats and no SD.
+  - After the freeze, enter the measured value(s) by hand; nothing is simulated. Then the same explicit Update as the demo.
+  - A settings editor discards any pending recommendation.
+  - Download record saves the JSON record plus the observations CSV.
+  - Uploaded data stays in the browser state and the local server only (no storage); no stronger privacy claim is made.
 - **Data and replay:** fastR2 snapshot, provenance, and the replay engine. Its only gateway
   to the core is `engine_inputs`. See `data/README.md`.
 - **Scientific core** (`nextlab-core-1`): see SPEC "Numerical method". Added in this
@@ -52,8 +62,8 @@ _Last updated: 2026-10-24 17:06 EDT. Milestone: Prompt 07, browser workflow for 
 
 ## Commands run and their outcomes
 - `julia --project=backend --threads=auto,1 -e 'using Pkg; Pkg.test()'`:
-  - 347/347 pass, with no known-broken markers. The suites are snapshot 10, replay 21,
-    core 150, benchmark 50 and API 116.
+  - 373/373 pass, with no known-broken markers. The suites are snapshot 10, replay 21,
+    core 150, benchmark 50 and API 142.
   - The API tests run against a real server. They cover the full demo loop; no unrevealed
     periods in the start or recommend payloads; reveal returning only the selected length;
     browser-style JSON numbers accepted; stale (409) and tampered (422) snapshots;
@@ -77,6 +87,14 @@ _Last updated: 2026-10-24 17:06 EDT. Milestone: Prompt 07, browser workflow for 
   - one request from a same-tick double click
   - reset, and a stale response after reset ignored
   - simulated backend failure and recovery, and a simulated 422 with field messages
+  - The upload flow (50 checks in total, run twice, all passing):
+    - the sample CSV download and upload (27 rows, 9 distinct values)
+    - a malformed value ("Data row 2: y ("abc") …")
+    - a BOM/CRLF/quoted 3-column file with column selection and repeats kept (5 rows, 3 distinct values)
+    - invalid bounds (`bounds.hi`)
+    - an invalid manual entry rejected, then manual entry, compare, update and a settings change
+    - switching dataset both ways, start over
+    - the real downloaded JSON and CSV for both modes; the demo export contains no unrevealed values
   - Screenshots were inspected by eye.
 
 ## Benchmark result
@@ -117,8 +135,7 @@ The Julia server on 127.0.0.1:8080 is running in the background, serving the API
 built frontend. Vite is not running.
 
 ## Not built yet
-- UI for upload and new-observation mode (the API exists)
 - a license for NextLab's own code
 
 ## Next
-The next build prompt: the upload and new-observation UI.
+The next build prompt.

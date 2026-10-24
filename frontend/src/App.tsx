@@ -4,9 +4,13 @@ import {
   BACKEND_UNAVAILABLE,
   analyze,
   exportRecord,
+  feasibleSettings,
+  observe,
   recommend,
   revealDemo,
   startDemo,
+  type FieldError,
+  type UploadResponse,
 } from './api'
 import { initialState, nextStep, reducer, type Action, type UiError } from './state'
 import { ExperimentPlot } from './Plot'
@@ -20,6 +24,8 @@ import {
   RecommendationPanel,
   StepBar,
 } from './Panels'
+import { MeasurementEntry, SettingsEditor, UploadForm } from './Upload'
+import type { feasibleRequest } from './inputs'
 import { sig, withUnit } from './format'
 
 function toUiError(e: unknown): UiError {
@@ -29,13 +35,15 @@ function toUiError(e: unknown): UiError {
   return { message: e instanceof Error ? e.message : String(e), fields: [], unavailable: false }
 }
 
-function download(obj: unknown, filename: string) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }))
+function download(content: string, type: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }))
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function App() {
@@ -69,13 +77,18 @@ function App() {
     [],
   )
 
-  const start = useCallback(async () => {
+  const newEpoch = (mode: 'demo' | 'upload', loading: boolean) => {
     epochRef.current += 1
-    const epoch = epochRef.current
-    dispatch({ type: 'reset', epoch })
+    inFlight.current = null
+    dispatch({ type: 'reset', epoch: epochRef.current, mode, loading })
+    return epochRef.current
+  }
+
+  const startDemoRun = useCallback(async () => {
+    const epoch = newEpoch('demo', true)
     try {
       const st = await startDemo()
-      dispatch({ type: 'started', epoch, start: st })
+      dispatch({ type: 'started', epoch, context: st.context, revision: st.revision, dataset: st.dataset })
       dispatch({ type: 'request', epoch, pending: 'analyze' })
       const an = await analyze(st.context)
       dispatch({ type: 'analyzed', epoch, resp: an })
@@ -84,12 +97,26 @@ function App() {
     }
   }, [])
 
+  const chooseUpload = () => newEpoch('upload', false)
+
+  const onUploaded = async (r: UploadResponse) => {
+    const epoch = newEpoch('upload', false)
+    dispatch({ type: 'started', epoch, context: r.context, revision: r.revision, dataset: null })
+    dispatch({ type: 'request', epoch, pending: 'analyze' })
+    try {
+      dispatch({ type: 'analyzed', epoch, resp: await analyze(r.context) })
+    } catch (e) {
+      dispatch({ type: 'failed', epoch, error: toUiError(e) })
+    }
+  }
+
   useEffect(() => {
-    void start()
-  }, [start])
+    void startDemoRun()
+  }, [startDemoRun])
 
   const step = nextStep(s)
   const busy = s.pending !== null
+  const demo = s.mode === 'demo'
 
   const onRecommend = () => {
     const ctx = stateRef.current.context
@@ -100,6 +127,11 @@ function App() {
     if (context && snapshot)
       void run('reveal', () => revealDemo(context, snapshot), (resp, epoch) => ({ type: 'revealed', epoch, resp }))
   }
+  const onMeasured = (ys: number[]) => {
+    const { context, snapshot } = stateRef.current
+    if (context && snapshot)
+      void run('reveal', () => observe(context, snapshot, ys), (resp, epoch) => ({ type: 'revealed', epoch, resp }))
+  }
   const onUpdate = () => {
     const o = stateRef.current.outcome
     if (o) void run('update', () => analyze(o.updated_context), (resp, epoch) => ({ type: 'updated', epoch, resp }))
@@ -107,14 +139,33 @@ function App() {
   const onCompareRetry = () => {
     const ctx = stateRef.current.context
     if (ctx) void run('analyze', () => analyze(ctx), (resp, epoch) => ({ type: 'analyzed', epoch, resp }))
-    else void start()
+    else if (stateRef.current.mode === 'demo') void startDemoRun()
+  }
+  const onApplySettings = async (req: ReturnType<typeof feasibleRequest>['req'], sd: number | null): Promise<FieldError[]> => {
+    const { context, outcome } = stateRef.current
+    if (!context || outcome) return [{ field: 'settings', message: 'Update the models first.' }]
+    try {
+      const { candidate_x } = await feasibleSettings(req)
+      const next = { ...context, candidate_x, response_sd: sd }
+      const epoch = epochRef.current
+      const resp = await analyze(next)
+      dispatch({ type: 'contextChanged', epoch, context: next, revision: resp.revision })
+      dispatch({ type: 'analyzed', epoch, resp })
+      return []
+    } catch (e) {
+      return e instanceof ApiError && e.fields.length ? e.fields : [{ field: 'settings', message: toUiError(e).message }]
+    }
   }
   const onExport = async () => {
-    const { context, cycles } = stateRef.current
+    const { context, cycles, outcome } = stateRef.current
     if (!context) return
     try {
-      const rec = await exportRecord(context, cycles.map((c) => c.snapshot))
-      download(rec, `nextlab-record-${rec.revision.slice(0, 8)}.json`)
+      // Include entered/revealed values that are waiting for Update, marked as not yet refitted.
+      const ctx = outcome ? outcome.updated_context : context
+      const ex = await exportRecord(ctx, cycles.map((c) => ({ snapshot: c.snapshot, updated: c.after !== null })))
+      const id = ex.record_id.slice(0, 8)
+      download(JSON.stringify(ex, null, 2), 'application/json', `nextlab-record-${id}.json`)
+      download(ex.observations_csv, 'text/csv', `nextlab-observations-${id}.csv`)
     } catch (e) {
       dispatch({ type: 'failed', epoch: epochRef.current, error: toUiError(e) })
     }
@@ -123,14 +174,17 @@ function App() {
   const ds = s.dataset
   const ctx = s.context
   const an = s.analysis?.analysis ?? null
-  const units = { x: ctx?.x_unit ?? 'm', y: ctx?.y_unit ?? 's' }
+  const units = { x: ctx?.x_unit ?? '', y: ctx?.y_unit ?? '' }
+  const labels = { x: ctx?.x_label || 'x', y: ctx?.y_label || 'y' }
   const xs = ctx?.observed.map((o) => o.x) ?? []
   const measured: [number, number] = [Math.min(...xs), Math.max(...xs)]
-  const lengthsMeasured = new Set(xs).size
+  const settingsMeasured = new Set(xs).size
   const lastCycle = s.cycles.length ? s.cycles[s.cycles.length - 1] : null
+  const cands = ctx?.candidate_x ?? []
+  const outside = cands.filter((x) => x < measured[0] || x > measured[1]).length
 
   const primaryLabel =
-    step === 'done'
+    step === 'done' || (step === 'reveal' && !demo)
       ? null
       : step === 'compare'
         ? s.pending ? 'Comparing models…' : 'Compare models'
@@ -143,7 +197,7 @@ function App() {
     const now = nextStep(stateRef.current)
     if (now === 'compare') onCompareRetry()
     else if (now === 'recommend') onRecommend()
-    else if (now === 'reveal') onReveal()
+    else if (now === 'reveal' && stateRef.current.mode === 'demo') onReveal()
     else if (now === 'update') onUpdate()
   }
 
@@ -155,14 +209,31 @@ function App() {
           <p className="purpose">Choose your next measurement, commit to predictions, then check them.</p>
         </div>
         <div className="source">
-          <strong>Recorded pendulum measurements</strong>
-          {ds && (
-            <span className="dim">
-              {' '}
-              · {ds.name}, credited to Calvin College physics students under Prof. Steve Plath · {ds.package_license} ·{' '}
-              <a href={ds.documentation_url} target="_blank" rel="noreferrer">
-                source
-              </a>
+          <div className="modes" role="group" aria-label="Data source">
+            <button className={demo ? 'on' : ''} aria-pressed={demo} onClick={() => void startDemoRun()}>
+              Built-in demonstration
+            </button>
+            <button className={!demo ? 'on' : ''} aria-pressed={!demo} onClick={chooseUpload}>
+              Use my data
+            </button>
+          </div>
+          {demo ? (
+            <span>
+              <strong>Recorded pendulum measurements</strong>
+              {ds && (
+                <span className="dim">
+                  {' '}
+                  · {ds.name}, credited to Calvin College physics students under Prof. Steve Plath · {ds.package_license} ·{' '}
+                  <a href={ds.documentation_url} target="_blank" rel="noreferrer">
+                    source
+                  </a>
+                </span>
+              )}
+            </span>
+          ) : (
+            <span>
+              <strong>User-uploaded data</strong>
+              {ctx && <span className="dim"> · {ctx.source_name} · kept in this browser session and the local server only</span>}
             </span>
           )}
         </div>
@@ -170,11 +241,11 @@ function App() {
           <button onClick={() => void onExport()} disabled={!ctx || busy}>
             Download record
           </button>
-          <button onClick={() => void start()}>Reset demo</button>
+          <button onClick={() => (demo ? void startDemoRun() : chooseUpload())}>{demo ? 'Reset demo' : 'Start over'}</button>
         </div>
       </header>
 
-      <StepBar step={step} cycle={s.cycles.filter((c) => c.after).length + (step === 'done' ? 0 : 1)} />
+      <StepBar step={step} cycle={s.cycles.filter((c) => c.after).length + (step === 'done' ? 0 : 1)} demo={demo} />
 
       {s.error && (
         <div className={`banner ${s.error.unavailable ? 'unavailable' : 'invalid'}`} role="alert">
@@ -182,7 +253,7 @@ function App() {
             <>
               <strong>Backend unavailable.</strong> The Julia server did not respond. Start it with{' '}
               <code>julia --project=backend --threads=auto,1 backend/scripts/serve.jl</code>, then{' '}
-              <button onClick={() => (ctx ? onCompareRetry() : void start())}>Retry</button>
+              <button onClick={onCompareRetry}>Retry</button>
             </>
           ) : (
             <>
@@ -201,98 +272,121 @@ function App() {
         </div>
       )}
 
-      <main className="bench">
-        <div className="left">
-          {ctx && an && s.analysis ? (
-            <ExperimentPlot
-              curves={s.analysis.curves}
-              previousCurves={s.previous && !s.snapshot && !s.outcome ? s.previous.curves : null}
-              models={an.models}
-              observed={ctx.observed}
-              revealed={s.outcome?.observations ?? null}
-              snapshot={s.snapshot}
-              xLabel={ds?.x.label ?? 'x'}
-              yLabel="Reported period"
-              xUnit={units.x}
-              yUnit={units.y}
-            />
-          ) : (
-            <div className="plot placeholder">{s.error ? 'No data loaded.' : 'Loading recorded measurements…'}</div>
-          )}
-          {an && <ModelCards models={an.models} yUnit={units.y} />}
-        </div>
+      {!demo && !ctx ? (
+        <UploadForm onLoaded={(r) => void onUploaded(r)} disabled={busy} />
+      ) : (
+        <main className="bench">
+          <div className="left">
+            {ctx && an && s.analysis ? (
+              <ExperimentPlot
+                curves={s.analysis.curves}
+                previousCurves={s.previous && !s.snapshot && !s.outcome ? s.previous.curves : null}
+                models={an.models}
+                observed={ctx.observed}
+                revealed={s.outcome?.observations ?? null}
+                snapshot={s.snapshot}
+                xLabel={labels.x}
+                yLabel={labels.y}
+                xUnit={units.x}
+                yUnit={units.y}
+                demo={demo}
+              />
+            ) : (
+              <div className="plot placeholder">{s.error ? 'No data loaded.' : 'Loading…'}</div>
+            )}
+            {an && <ModelCards models={an.models} yUnit={units.y} />}
+          </div>
 
-        <aside className="right">
-          {ctx && (
-            <p className="observed-note">
-              Observed: <strong>{lengthsMeasured} lengths</strong>, <strong>{ctx.observed.length} period observations</strong>{' '}
-              (reported averages over several swings). {ctx.candidate_x.length > 0 && (
-                <>
-                  The other {ctx.candidate_x.length} recorded lengths ({ctx.candidate_x.join(', ')} {units.x}) stay hidden for
-                  replay; the recommendation sees only the observed periods and which lengths exist.
-                </>
-              )}
-            </p>
-          )}
-
-          {primaryLabel && (
-            <button className="primary" onClick={onPrimary} disabled={busy || !ctx}>
-              {primaryLabel}
-            </button>
-          )}
-          {step === 'update' && (
-            <p className="dim">Check the frozen predictions against the recorded values, then update. The next recommendation waits for this step.</p>
-          )}
-
-          {an && an.status !== 'ok' && an.status !== 'no_candidates' && (
-            <p className="callout warn">{an.explanation}</p>
-          )}
-          {an?.all_models_inadequate && (
-            <p className="callout warn">
-              Poor fit (heuristic): every model misses the measured means by more than the measured variability. No candidate
-              fits adequately.
-            </p>
-          )}
-          {an?.noise?.source === 'unknown' && <p className="callout">{an.noise.note}</p>}
-          {s.complete && (
-            <p className="callout">
-              Replay complete: all recorded lengths are measured. Download the record or reset the demo to start again.
-            </p>
-          )}
-
-          {s.outcome ? (
-            <ComparisonPanel outcome={s.outcome} units={units} />
-          ) : s.snapshot && s.recommendation ? (
-            <RecommendationPanel rec={s.recommendation} snapshot={s.snapshot} measured={measured} units={units} />
-          ) : lastCycle?.after ? (
-            <ChangePanel cycle={lastCycle} units={units} />
-          ) : (
-            an &&
-            an.status === 'ok' && (
-              <section className="panel">
-                <h2>Models compared</h2>
-                <p>
-                  Three two-parameter models fitted to {an.data?.n_settings} lengths ({an.data?.n_observations} observations).
-                  Leading by validation error:{' '}
-                  {(() => {
-                    const best = [...an.models].sort((a, b) => (b.support ?? -1) - (a.support ?? -1))[0]
-                    return `${best.name}, ${withUnit(best.grouped_cv_rmse, units.y)} RMSE`
-                  })()}
-                  . Recommend a next length to freeze each model's prediction before anything is revealed.
+          <aside className="right">
+            {ctx &&
+              (demo ? (
+                <p className="observed-note">
+                  Observed: <strong>{settingsMeasured} lengths</strong>, <strong>{ctx.observed.length} period observations</strong>{' '}
+                  (reported averages over several swings).{' '}
+                  {ctx.candidate_x.length > 0 && (
+                    <>
+                      The other {ctx.candidate_x.length} recorded lengths ({ctx.candidate_x.join(', ')} {units.x}) stay hidden
+                      for replay; the recommendation sees only the observed periods and which lengths exist.
+                    </>
+                  )}
                 </p>
-                <p className="dim">
-                  Measured range: {sig(measured[0])}–{sig(measured[1])} {units.x}. Repeats vary by about{' '}
-                  {withUnit(an.noise?.sd_individual, units.y)} (SD of individual observations); a mean of 3 is uncertain by
-                  about {withUnit(an.noise?.representative_mean_sd, units.y)}.
+              ) : (
+                <p className="observed-note">
+                  Observed: <strong>{settingsMeasured} distinct {labels.x} values</strong>,{' '}
+                  <strong>{ctx.observed.length} rows</strong>. Every uploaded row is already observed; there is no hidden data.
+                  Feasible next settings: {cands.length} from {sig(Math.min(...cands))} to {sig(Math.max(...cands))} {units.x}
+                  {outside > 0 && <>, {outside} of them outside the observed range (extrapolation)</>}.
                 </p>
-              </section>
-            )
-          )}
-        </aside>
-      </main>
+              ))}
+
+            {primaryLabel && (
+              <button className="primary" onClick={onPrimary} disabled={busy || !ctx}>
+                {primaryLabel}
+              </button>
+            )}
+            {!demo && step === 'reveal' && ctx && s.snapshot && (
+              <MeasurementEntry x={s.snapshot.record.x} context={ctx} disabled={busy} onSubmit={onMeasured} />
+            )}
+            {step === 'update' && (
+              <p className="dim">
+                Check the frozen predictions against the {demo ? 'recorded' : 'entered'} values, then update. The next
+                recommendation waits for this step.
+              </p>
+            )}
+
+            {an && an.status !== 'ok' && an.status !== 'no_candidates' && <p className="callout warn">{an.explanation}</p>}
+            {an?.all_models_inadequate && (
+              <p className="callout warn">
+                Poor fit (heuristic): every model misses the measured means by more than the measured variability. No
+                candidate fits adequately.
+              </p>
+            )}
+            {an?.noise?.source === 'unknown' && <p className="callout">{an.noise.note}</p>}
+            {s.complete && (
+              <p className="callout">
+                {demo
+                  ? 'Replay complete: all recorded lengths are measured. Download the record or reset the demo to start again.'
+                  : 'Every feasible setting has been measured. Add feasible settings to continue, or download the record.'}
+              </p>
+            )}
+
+            {s.outcome ? (
+              <ComparisonPanel outcome={s.outcome} units={units} demo={demo} />
+            ) : s.snapshot && s.recommendation ? (
+              <RecommendationPanel rec={s.recommendation} snapshot={s.snapshot} measured={measured} units={units} demo={demo} />
+            ) : lastCycle?.after ? (
+              <ChangePanel cycle={lastCycle} units={units} />
+            ) : (
+              an &&
+              an.status === 'ok' && (
+                <section className="panel">
+                  <h2>Models compared</h2>
+                  <p>
+                    Three two-parameter models fitted to {an.data?.n_settings} distinct {demo ? 'lengths' : 'settings'} (
+                    {an.data?.n_observations} observations). Leading by validation error:{' '}
+                    {(() => {
+                      const best = [...an.models].sort((a, b) => (b.support ?? -1) - (a.support ?? -1))[0]
+                      return `${best.name}, ${withUnit(best.grouped_cv_rmse, units.y)} RMSE`
+                    })()}
+                    . Recommend a next setting to freeze each model's prediction before anything is {demo ? 'revealed' : 'measured'}.
+                  </p>
+                  <p className="dim">
+                    Observed range: {sig(measured[0])}–{sig(measured[1])} {units.x}.{' '}
+                    {an.noise?.source === 'repeats' &&
+                      `Repeats vary by about ${withUnit(an.noise.sd_individual, units.y)} (SD of individual observations); the mean of a setting is uncertain by about ${withUnit(an.noise.representative_mean_sd, units.y)}.`}
+                    {an.noise?.source === 'user' &&
+                      `Using the stated noise SD of ${withUnit(an.noise.sd_individual, units.y)} per observation (no repeats in the data).`}
+                  </p>
+                </section>
+              )
+            )}
+            {!demo && ctx && <SettingsEditor key={s.revision ?? ''} context={ctx} locked={s.outcome !== null} onApply={onApplySettings} />}
+          </aside>
+        </main>
+      )}
 
       <History cycles={s.cycles} units={units} />
-      {an && ds && <Assumptions analysis={an} dataset={ds} />}
+      {an && <Assumptions analysis={an} dataset={ds} />}
       <BenchmarkSection />
     </div>
   )

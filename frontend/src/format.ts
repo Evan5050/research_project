@@ -30,3 +30,6 @@ export function support(w: number | null | undefined): string {
 }
 
 export const shortId = (id: string) => id.slice(0, 8)
+
+/** End a sentence after a value whose unit may already end in a period ("a.u."). */
+export const stop = (s: string) => (s.endsWith('.') ? s : `${s}.`)

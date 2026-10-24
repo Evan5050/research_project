@@ -46,9 +46,10 @@ for m in c["models"]
 end
 an2, _ = post("/api/analyze", Dict("context" => rv["updated_context"]))
 check("update: explicit refit on 12 observations, new revision", an2["analysis"]["data"]["n_observations"] == 12 && an2["revision"] == rv["updated_revision"])
-ex, _ = post("/api/export", Dict("context" => rv["updated_context"], "history" => [snap]))
-check("export: record with verified snapshot and outcome", ex["format"] == "nextlab-experiment-record-1" &&
-      ex["history"][1]["outcome"] !== nothing)
+ex, t = post("/api/export", Dict("context" => rv["updated_context"], "history" => [Dict("snapshot" => snap, "updated" => true)]))
+check("export: replay record with frozen cycle, revealed values, no unrevealed periods",
+      ex["record"]["format"] == "nextlab-experiment-record-2" && ex["record"]["run_type"] == "recorded_data_replay" &&
+      ex["record"]["cycles"][1]["comparison"] !== nothing && isempty(leaks(t, (x,))))
 stale = HTTP.post(base * "/api/demo/reveal", ["Content-Type" => "application/json"],
                   JSON.json(Dict("context" => rv["updated_context"], "snapshot" => snap)); status_exception = false)
 check("stale snapshot after update rejected (HTTP $(stale.status))", stale.status == 409)

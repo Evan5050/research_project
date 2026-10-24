@@ -3,7 +3,7 @@
 //   CHROME="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \
 //     node frontend/scripts/browser-check.mjs http://127.0.0.1:8080 /tmp/nextlab-shots
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { unlinkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -250,6 +250,162 @@ await screenshot('recommended-1280x720')
 await viewport(1366, 768)
 await waitFor(`document.body.innerText.includes('Benchmark evidence (simulation, not pendulum data)') && document.body.innerText.includes('No clear difference')`, 'benchmark loaded')
 await screenshot('full-page', true)
+
+
+// 9. Uploaded-data workflow and exports
+const dl = mkdtempSync(join(tmpdir(), 'nl-downloads-'))
+await send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: dl })
+const files = mkdtempSync(join(tmpdir(), 'nl-csv-'))
+const setValue = (label, value) => evaluate(`(() => {
+  const el = document.querySelector('[aria-label="${label}"]')
+  const proto = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype
+  Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(String(value))})
+  el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }))
+})()`)
+async function chooseFile(path) {
+  const { root } = await send('DOM.getDocument', { depth: -1 })
+  const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: 'input[type=file]' })
+  await send('DOM.setFileInputFiles', { files: [path], nodeId })
+}
+async function waitDownload(prefix, ms = 10000) {
+  const t0 = Date.now()
+  while (Date.now() - t0 < ms) {
+    const f = readdirSync(dl).find((n) => n.startsWith(prefix) && !n.endsWith('.crdownload'))
+    if (f) return readFileSync(join(dl, f), 'utf8')
+    await sleep(100)
+  }
+  check(`download ${prefix}`, false, 'not found')
+  return ''
+}
+const loadButton = () => evaluate(`[...document.querySelectorAll('button')].find(b => b.innerText.startsWith('Load data')).click()`)
+
+// Demo export after a reveal but before Update: revealed values marked, nothing unrevealed included.
+await clickButton('Reset demo')
+await waitFor(`document.querySelector('button.primary')?.innerText === 'Recommend next measurement'`, 'demo ready for export test')
+await clickPrimary()
+await waitFor(`document.querySelector('button.primary')?.innerText.startsWith('Reveal')`, 'demo snapshot for export')
+await clickPrimary()
+await waitFor(`document.querySelector('button.primary')?.innerText.startsWith('Update')`, 'demo revealed for export')
+await clickButton('Download record')
+const demoJson = await waitDownload('nextlab-record-')
+const demoCsv = await waitDownload('nextlab-observations-')
+const demoRec = JSON.parse(demoJson).record
+check('demo export: replay run type, source link, revealed values marked, not yet refitted',
+  demoRec.run_type === 'recorded_data_replay' && demoRec.source.provenance.documentation_url.includes('fastR2') &&
+  demoRec.observations.filter((o) => o.origin === 'revealed_recorded_value').length === 3 &&
+  demoRec.cycles[0].refit_after_observation === false)
+const hiddenNow = [1.87, 1.82, 1.85, 2.43, 2.35, 2.46, 3.07, 3.24, 3.13, 4.17, 3.83, 4.02, 5.55, 5.56, 5.75]
+check('demo export contains no unrevealed recorded values', !hiddenNow.some((v) => new RegExp(`(?<![0-9.])${String(v).replace('.', '\\.')}(?![0-9])`).test(demoJson)))
+check('demo observations CSV: header with units and 12 rows', demoCsv.startsWith('Pendulum length (m),Reported period (s),origin,cycle\n') && demoCsv.trim().split('\n').length === 13)
+for (const f of readdirSync(dl)) unlinkSync(join(dl, f))
+
+// Switch to "Use my data": demo state is cleared, nothing hidden.
+await clickButton('Use my data')
+await waitFor(`document.body.innerText.includes('Download a sample CSV')`, 'upload form')
+check('switching dataset clears the demo history', !(await text()).includes('Prediction history'))
+
+// Sample CSV download, then upload it.
+const sample = await evaluate(`fetch('/api/sample.csv').then(r => r.text())`)
+check('sample CSV is the derived two-column pendulum file', sample.startsWith('length_m,period_s\n0.101,0.72\n') && sample.trim().split('\n').length === 28)
+writeFileSync(join(files, 'sample.csv'), sample)
+await chooseFile(join(files, 'sample.csv'))
+await waitFor(`document.body.innerText.includes('27 data rows')`, 'sample preview')
+await setValue('Input unit', 'm'); await setValue('Response unit', 's')
+await loadButton()
+await waitFor(`document.body.innerText.includes('Every uploaded row is already observed') && document.querySelector('button.primary')?.innerText === 'Recommend next measurement'`, 'sample loaded')
+t = await text()
+check('sample upload: 9 distinct values, 27 rows, nothing hidden', t.includes('9 distinct length_m values') && t.includes('27 rows') && t.includes('no hidden data'))
+
+// Malformed value: row-level message, nothing loaded.
+await clickButton('Start over')
+writeFileSync(join(files, 'bad.csv'), 'x,y\n1,2\n2,abc\n4,5\n')
+await waitFor(`!!document.querySelector('input[type=file]')`, 'upload form again')
+await chooseFile(join(files, 'bad.csv'))
+await waitFor(`document.body.innerText.includes('3 data rows')`, 'bad preview')
+await loadButton()
+await waitFor(`document.body.innerText.includes('Data row 2: y')`, 'malformed row message')
+check('malformed value reported with its data row', (await text()).includes('Data row 2: y ("abc") must be a finite number'))
+await screenshot('upload-malformed')
+
+// Quoted / BOM / CRLF file with a run column: choose x and y; repeated settings kept.
+await clickButton('Start over')
+writeFileSync(join(files, 'dose.csv'), '﻿run,"dose level",response\r\n1,1,"2.1"\r\n2,1,2.3\r\n3,2,2.9\r\n4,4,4.2\r\n5,4,4.0\r\n')
+await waitFor(`!!document.querySelector('input[type=file]')`, 'upload form for dose')
+await chooseFile(join(files, 'dose.csv'))
+await waitFor(`document.body.innerText.includes('5 data rows')`, 'dose preview')
+check('quoted header read through BOM/CRLF', (await evaluate(`[...document.querySelectorAll('.preview th')].map(e => e.innerText)`)).join('|') === 'run|dose level|response')
+await setValue('Input column', 1); await setValue('Response column', 2)
+await setValue('Input label', 'Dose'); await setValue('Input unit', 'mg')
+await setValue('Response label', 'Response'); await setValue('Response unit', 'a.u.')
+await setValue('Feasible range lower bound', 5); await setValue('Feasible range upper bound', 1)
+await loadButton()
+await waitFor(`document.body.innerText.includes('Upper bound must be greater than the lower bound')`, 'invalid bounds message')
+check('invalid bounds rejected with a field message', (await text()).includes('bounds.hi'))
+await setValue('Feasible range lower bound', 1); await setValue('Feasible range upper bound', 4); await setValue('Feasible range step', 0.5)
+await setValue('Explicit feasible settings', '6')
+await loadButton()
+await waitFor(`document.querySelector('button.primary')?.innerText === 'Recommend next measurement'`, 'dose loaded')
+t = await text()
+check('repeats kept: 3 distinct Dose values, 5 rows; one setting marked as extrapolation',
+  t.includes('3 distinct Dose values') && t.includes('5 rows') && t.includes('8 from 1 to 6 mg') && t.includes('1 of them outside the observed range'))
+const ax2 = await evaluate(`[...document.querySelectorAll('.plot-canvas .xtitle, .plot-canvas .ytitle')].map(e => e.textContent)`)
+check('plot uses the user labels and units, linear axis for a narrow range', ax2.includes('Dose (mg)') && ax2.includes('Response (a.u.)'), JSON.stringify(ax2))
+
+// Recommend -> enter the measured value by hand -> compare -> update.
+await clickPrimary()
+await waitFor(`!!document.querySelector('[aria-label="Measured values"]')`, 'measurement entry')
+t = await text()
+const xSel = await evaluate(`document.querySelector('.rec h2').innerText`)
+check('frozen recommendation shown before any measurement; no reveal button in upload mode', t.includes('fixed before the measurement') && !t.includes('Reveal recorded measurement'), xSel)
+await screenshot('upload-recommended')
+await setValue('Measured values', '5.1, x')
+await evaluate(`[...document.querySelectorAll('button')].find(b => b.innerText === 'Record measurement').click()`)
+await waitFor(`document.body.innerText.includes('"x" is not a number')`, 'bad entry message')
+await setValue('Measured values', '5.1, 5.3')
+await evaluate(`[...document.querySelectorAll('button')].find(b => b.innerText === 'Record measurement').click()`)
+await waitFor(`document.body.innerText.includes('2 values you entered')`, 'entered values compared')
+t = await text()
+check('entered values compared with the frozen predictions, models not refitted', t.includes('Entered at') && t.includes('Mean 5.2 a.u.') && t.includes('have not been refitted'))
+await screenshot('upload-entered')
+await clickPrimary()
+await waitFor(`document.body.innerText.includes('What changed after adding')`, 'upload update')
+check('update refits with the entered rows (7 rows)', (await text()).includes('7 rows'))
+await screenshot('upload-updated')
+
+// Settings change discards a pending recommendation.
+await clickPrimary()
+await waitFor(`!!document.querySelector('[aria-label="Measured values"]')`, 'second upload recommendation')
+await evaluate(`document.querySelector('details.settings').open = true`)
+await setValue('Explicit feasible settings', '3, 5')
+await evaluate(`[...document.querySelectorAll('button')].find(b => b.innerText === 'Apply settings').click()`)
+await waitFor(`!document.querySelector('[aria-label="Measured values"]') && document.querySelector('button.primary')?.innerText === 'Recommend next measurement'`, 'settings applied')
+check('changing feasible settings discards the pending recommendation', (await text()).includes('2 from 3 to 5 mg'))
+
+// Export the uploaded run.
+await clickButton('Download record')
+const upJson = await waitDownload('nextlab-record-')
+const upCsv = await waitDownload('nextlab-observations-')
+const up = JSON.parse(upJson)
+const r = up.record
+check('upload export: run type, source name, units, formulas, method version',
+  r.run_type === 'user_uploaded_data' && r.source.name === 'dose.csv' && r.variables.x.unit === 'mg' &&
+  r.method.version === 'nextlab-core-1' && r.method.models.map((m) => m.formula).join('|') === 'y = a·x + b|y = a·√x + b|y = a·x² + b')
+check('upload export: 5 uploaded rows, 2 entered in cycle 1, update recorded, frozen predictions kept',
+  r.observations.filter((o) => o.origin === 'uploaded_file').length === 5 &&
+  r.observations.filter((o) => o.origin === 'entered_manually' && o.cycle === 1).length === 2 &&
+  r.cycles.length === 1 && r.cycles[0].refit_after_observation === true && r.cycles[0].frozen_predictions.length === 3 &&
+  Math.abs(r.cycles[0].comparison.observed_mean - 5.2) < 1e-12)
+check('upload export: feasible settings, noise assumption, stable ids', JSON.stringify(r.feasible_settings) === '[3,5]' &&
+  r.noise_assumption.stated_response_sd === null && up.record_id.length === 64 && r.cycles[0].snapshot_id.length === 64)
+check('upload observations CSV', upCsv.startsWith('Dose (mg),Response (a.u.),origin,cycle\n') && upCsv.trim().split('\n').length === 8)
+writeFileSync(join(out, 'upload-export.json'), upJson)
+writeFileSync(join(out, 'upload-observations.csv'), upCsv)
+console.log(`     upload example: recommended ${r.cycles[0].selected_x} mg; entered ${r.cycles[0].later_observations.map((o) => o.y).join(', ')}; closest ${r.cycles[0].comparison.closest_model}`)
+
+// Back to the demo.
+await clickButton('Built-in demonstration')
+await waitFor(`document.body.innerText.includes('9 period observations') && document.querySelector('button.primary')?.innerText === 'Recommend next measurement'`, 'back to demo')
+check('switching back restores the built-in demo start', (await text()).includes('Recorded pendulum measurements'))
 
 console.log(failures === 0 ? '\nBrowser check passed.' : `\n${failures} check(s) failed.`)
 ws.close()

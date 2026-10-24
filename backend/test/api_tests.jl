@@ -72,11 +72,23 @@ jsify(x) = x
             st, b, _ = post("/api/demo/reveal", Dict("context" => ctx2, "snapshot" => snap))
             @test st == 409 && "snapshot.context_revision" in fields(b)
 
-            st, ex, _ = post("/api/export", Dict("context" => ctx2, "history" => [snap]))
-            @test st == 200 && ex["format"] == "nextlab-experiment-record-1"
-            @test ex["history"][1]["outcome"]["comparison"]["closest_model"] == "sqrt"
-            @test ex["history"][1]["snapshot"]["snapshot_id"] == snap["snapshot_id"]
-            @test ex["dataset"]["collected_by_nextlab_user"] == false
+            st, ex, text = post("/api/export", Dict("context" => ctx2, "history" => [Dict("snapshot" => snap, "updated" => true)]))
+            rec = ex["record"]
+            @test st == 200 && rec["format"] == "nextlab-experiment-record-2" && length(ex["record_id"]) == 64
+            @test rec["run_type"] == "recorded_data_replay"
+            @test rec["source"]["provenance"]["collected_by_nextlab_user"] == false
+            @test occursin("fastR2", rec["source"]["provenance"]["documentation_url"])
+            cyc = rec["cycles"][1]
+            @test cyc["order"] == 1 && cyc["snapshot_id"] == snap["snapshot_id"] && cyc["refit_after_observation"] == true
+            @test cyc["comparison"]["closest_model"] == "sqrt"
+            # Frozen predictions are the pre-observation values, not the refitted ones.
+            @test [m["predicted_y"] for m in cyc["frozen_predictions"]] == [m["predicted_y"] for m in snap["record"]["models"]]
+            @test Set(o["origin"] for o in rec["observations"]) == Set(["recorded_initial_subset", "revealed_recorded_value"])
+            @test count(o -> o["cycle"] == 1, rec["observations"]) == 3
+            @test [m["formula"] for m in rec["method"]["models"]] == ["y = a·x + b", "y = a·√x + b", "y = a·x² + b"]
+            @test isempty(intersect(Set(numbers_in(text)), hidden_except(16.0)))   # no unrevealed recorded values
+            lines = split(strip(ex["observations_csv"]), "\n")
+            @test lines[1] == "Pendulum length (m),Reported period (s),origin,cycle" && length(lines) == 13
 
             # Reset issues a new session: the old snapshot is rejected even with identical data.
             st, again, _ = post("/api/demo/start", Dict())
@@ -202,6 +214,42 @@ jsify(x) = x
             st, b, _ = post("/api/observe", raw(Dict("context" => uctx, "snapshot" => snap, "y" => [12345.678, 2]), "12345.678", "1.5e0"))
             @test st == 200 && [o["y"] for o in b["observations"]] == [1.5, 2.0]
             @test post("/api/feasible", Dict("lo" => 1, "hi" => 2, "n" => 3))[2]["candidate_x"] == [1.0, 1.5, 2.0]
+        end
+
+        @testset "upload workflow: preview, feasible settings, manual entry, export" begin
+            st, pv, _ = post("/api/upload/preview", Dict("csv" => "﻿run,\"temp (K)\",rate\r\n1,300,0.5\r\n2,310,\"0.61\"\r\n3,320\r\n"))
+            @test st == 200 && pv["columns"] == ["run", "temp (K)", "rate"] && pv["n_rows"] == 3
+            @test pv["column_info"][2]["min"] == 300.0 && pv["column_info"][2]["max"] == 320.0
+            @test any(p -> occursin("Data row 3: too few fields", p["message"]), pv["problems"])
+
+            csv = "dose,response\n1,2.1\n1,2.3\n2,2.9\n4,4.2\n4,4.0\n"
+            st, up, _ = post("/api/upload", Dict("csv" => csv, "bounds" => Dict("lo" => 1, "hi" => 4, "step" => 0.5),
+                                                "candidate_x" => [6, 2.5], "x_label" => "Dose", "x_unit" => "mg",
+                                                "y_label" => "Response", "y_unit" => "a.u.", "source_name" => "dose.csv"))
+            @test st == 200
+            u = up["context"]
+            @test u["candidate_x"] == [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 6.0]            # union, deduplicated
+            @test up["counts"]["candidates_outside_observed_range"] == 1 && up["counts"]["settings"] == 3
+            @test u["x_label"] == "Dose" && u["source_name"] == "dose.csv" && u["revealed_x"] == []
+            @test "bounds.step" in fields(post("/api/upload", Dict("csv" => csv, "bounds" => Dict("lo" => 1, "hi" => 4, "step" => 0.001)))[2])
+            @test "bounds.step" in fields(post("/api/upload", Dict("csv" => csv, "bounds" => Dict("lo" => 1, "hi" => 4, "step" => 0)))[2])
+            @test post("/api/feasible", Dict("lo" => 1, "hi" => 2, "step" => 0.5, "candidate_x" => [1.5, 3]))[2]["candidate_x"] == [1.0, 1.5, 2.0, 3.0]
+
+            rec = post("/api/recommend", Dict("context" => u))[2]
+            snap = rec["snapshot"]
+            st, ob, _ = post("/api/observe", Dict("context" => u, "snapshot" => snap, "y" => [5.1, 5.3]))
+            @test st == 200 && ob["refit_performed"] == false
+            st, ex, _ = post("/api/export", Dict("context" => ob["updated_context"], "history" => [Dict("snapshot" => snap, "updated" => false)]))
+            r = ex["record"]
+            @test r["run_type"] == "user_uploaded_data" && r["source"]["name"] == "dose.csv"
+            @test count(o -> o["origin"] == "entered_manually" && o["cycle"] == 1, r["observations"]) == 2
+            @test count(o -> o["origin"] == "uploaded_file", r["observations"]) == 5
+            @test r["cycles"][1]["refit_after_observation"] == false
+            @test r["variables"]["x"]["unit"] == "mg" && r["noise_assumption"]["stated_response_sd"] === nothing
+            @test startswith(ex["observations_csv"], "Dose (mg),Response (a.u.),origin,cycle\n")
+
+            r = HTTP.get(base * "/api/sample.csv"; status_exception = false)
+            @test r.status == 200 && startswith(String(copy(r.body)), "length_m,period_s\n0.101,0.72\n")
         end
 
         @testset "benchmark summary with reproduction metadata" begin

@@ -75,7 +75,17 @@ struct ExperimentContext
     response_sd::Union{Nothing,Float64}
     x_unit::String
     y_unit::String
+    # Descriptive only (not part of the revision): how the browser labels the data.
+    x_label::String
+    y_label::String
+    source_name::String
 end
+
+"Copy of `c` with new data and the same session, units and labels."
+with_data(c::ExperimentContext; observed = c.observed, candidate_x = c.candidate_x, revealed_x = c.revealed_x,
+          response_sd = c.response_sd) =
+    ExperimentContext(c.mode, c.session_id, c.dataset_id, observed, candidate_x, revealed_x, response_sd,
+                      c.x_unit, c.y_unit, c.x_label, c.y_label, c.source_name)
 
 """
 Revision of everything that can invalidate a pending recommendation: mode, session
@@ -91,7 +101,8 @@ end
 
 context_json(c::ExperimentContext) = (mode = c.mode, session_id = c.session_id, dataset_id = c.dataset_id,
     observed = [(x = x, y = y) for (x, y) in c.observed], candidate_x = c.candidate_x, revealed_x = c.revealed_x,
-    response_sd = c.response_sd, x_unit = c.x_unit, y_unit = c.y_unit)
+    response_sd = c.response_sd, x_unit = c.x_unit, y_unit = c.y_unit, x_label = c.x_label, y_label = c.y_label,
+    source_name = c.source_name)
 
 function number_list(v, field, errs; maxlen)
     v isa AbstractVector || (push!(errs, (field, "Must be a list of numbers.")); return Float64[])
@@ -157,6 +168,9 @@ function parse_context(body::AbstractDict; key = "context")
     end
     xu = str_field(o, "x_unit", "$key.x_unit", errs; maxlen = 20, default = "")
     yu = str_field(o, "y_unit", "$key.y_unit", errs; maxlen = 20, default = "")
+    xl = str_field(o, "x_label", "$key.x_label", errs; maxlen = 80, default = "")
+    yl = str_field(o, "y_label", "$key.y_label", errs; maxlen = 80, default = "")
+    src = str_field(o, "source_name", "$key.source_name", errs; maxlen = 120, default = "")
     isempty(errs) || throw(RequestError(422, "The experiment context is invalid.", errs))
 
     if mode == "demo"
@@ -171,7 +185,7 @@ function parse_context(body::AbstractDict; key = "context")
         isempty(revealed) || push!(errs, ("$key.revealed_x", "Only demo mode reveals recorded settings."))
     end
     isempty(errs) || throw(RequestError(422, "The experiment context is inconsistent.", errs))
-    return ExperimentContext(mode, session_id, dataset_id, observed, cands, revealed, sd, xu, yu)
+    return ExperimentContext(mode, session_id, dataset_id, observed, cands, revealed, sd, xu, yu, xl, yl, src)
 end
 
 run_analysis(c::ExperimentContext) =
@@ -222,7 +236,7 @@ function outcome_payload(s, c::ExperimentContext, rows)
     observed = vcat(c.observed, [(r.x, r.y) for r in rows])
     revealed = c.mode == "demo" ? vcat(c.revealed_x, [xnew]) : c.revealed_x
     cands = c.mode == "demo" ? [x for x in c.candidate_x if x != xnew] : c.candidate_x
-    updated = ExperimentContext(c.mode, c.session_id, c.dataset_id, observed, cands, revealed, c.response_sd, c.x_unit, c.y_unit)
+    updated = with_data(c; observed, candidate_x = cands, revealed_x = revealed)
     return (snapshot_id = s["snapshot_id"], x = xnew, observations = rows,
             comparison = compare_to_frozen(frozen_models(s), Float64[r.y for r in rows];
                                            sd_individual = s["record"]["noise"]["sd_individual"]),
@@ -247,7 +261,7 @@ function demo_start(req::HTTP.Request)
     read_json(req)
     c = ExperimentContext("demo", new_session_id(), DEMO_DATASET_ID,
                           [(r.x, r.y) for r in demo_observed(Float64[])], demo_remaining(Float64[]), Float64[],
-                          nothing, "m", "s")
+                          nothing, "m", "s", "Pendulum length", "Reported period", PENDULUM_PROVENANCE.name)
     return json_response(200, (context = context_json(c), revision = context_revision(c), dataset = PENDULUM_PROVENANCE,
         counts = (lengths_measured = length(unique(first.(c.observed))), observations = length(c.observed),
                   remaining_lengths = length(c.candidate_x))))
@@ -305,38 +319,62 @@ function upload_route(req::HTTP.Request)
     text isa AbstractString || throw(RequestError(422, "No CSV text was provided.", [("csv", "Must be the file's text.")]))
     p = parse_upload_csv(text; x_column = get(body, "x_column", nothing), y_column = get(body, "y_column", nothing))
     append!(errs, p.errors)
-    b = get(body, "bounds", nothing)
-    cands = Float64[]
-    if b isa AbstractDict
-        grid, ge = feasible_grid(get(b, "lo", nothing), get(b, "hi", nothing), get(b, "n", nothing))
-        append!(errs, ge); cands = grid
-    elseif haskey(body, "candidate_x")
-        cands = number_list(body["candidate_x"], "candidate_x", errs; maxlen = MAX_CANDIDATES)
-        isempty(cands) && push!(errs, ("candidate_x", "List at least one feasible setting."))
-        any(<=(0), cands) && push!(errs, ("candidate_x", "Feasible settings must be positive."))
-    else
-        push!(errs, ("bounds", "Give feasible bounds {lo, hi, n} or a candidate_x list for the next measurement."))
-    end
+    cands, fe = feasible_settings(get(body, "bounds", nothing), get(body, "candidate_x", nothing))
+    append!(errs, fe)
     sd_raw = get(body, "response_sd", nothing)
     sd_f = json_float(sd_raw)
     sd_raw === nothing || (sd_f !== nothing && sd_f > 0) ||
         push!(errs, ("response_sd", "Must be empty or a positive finite number."))
     xu = str_field(body, "x_unit", "x_unit", errs; maxlen = 20, default = "")
     yu = str_field(body, "y_unit", "y_unit", errs; maxlen = 20, default = "")
+    xl = str_field(body, "x_label", "x_label", errs; maxlen = 80, default = "")
+    yl = str_field(body, "y_label", "y_label", errs; maxlen = 80, default = "")
+    src = str_field(body, "source_name", "source_name", errs; maxlen = 120, default = "")
     isempty(errs) || throw(RequestError(422, "The upload could not be used.", errs))
     c = ExperimentContext("upload", new_session_id(), "upload:" * first(sha(text), 16), collect(zip(p.x, p.y)),
-                          cands, Float64[], sd_raw === nothing ? nothing : sd_f, xu, yu)
+                          cands, Float64[], sd_raw === nothing ? nothing : sd_f, xu, yu,
+                          isempty(xl) ? p.x_column : xl, isempty(yl) ? p.y_column : yl, isempty(src) ? "Uploaded CSV" : src)
+    lo, hi = extrema(p.x)
     return json_response(200, (context = context_json(c), revision = context_revision(c),
         columns = p.columns, x_column = p.x_column, y_column = p.y_column,
-        counts = (observations = length(p.x), settings = length(unique(p.x)), candidates = length(cands))))
+        counts = (observations = length(p.x), settings = length(unique(p.x)), candidates = length(cands),
+                  candidates_outside_observed_range = count(x -> x < lo || x > hi, cands)),
+        observed_range = (lo = lo, hi = hi)))
 end
+
+function preview_route(req::HTTP.Request)
+    body = read_json(req)
+    text = get(body, "csv", nothing)
+    text isa AbstractString || throw(RequestError(422, "No CSV text was provided.", [("csv", "Must be the file's text.")]))
+    p = preview_upload_csv(text)
+    p.ok || isempty(p.columns) && throw(RequestError(422, "The file could not be previewed.", p.errors))
+    return json_response(200, (columns = p.columns, n_rows = p.n_rows, rows = p.rows, column_info = p.column_info,
+                               problems = [(field = f, message = m) for (f, m) in p.errors]))
+end
+
+sample_route(::HTTP.Request) = HTTP.Response(200, read(PENDULUM_DERIVED_CSV);
+    headers = ["Content-Type" => "text/csv", "Content-Disposition" => "attachment; filename=\"nextlab_sample_pendulum_length_period.csv\""])
 
 function feasible_route(req::HTTP.Request)
     body = read_json(req)
-    grid, errs = feasible_grid(get(body, "lo", nothing), get(body, "hi", nothing), get(body, "n", nothing))
-    isempty(errs) || throw(RequestError(422, "The feasible range is invalid.", errs))
+    bounds = any(k -> haskey(body, k), ("lo", "hi", "n", "step")) ?
+        Dict{String,Any}(k => body[k] for k in ("lo", "hi", "n", "step") if haskey(body, k)) : nothing
+    grid, errs = feasible_settings(bounds, get(body, "candidate_x", nothing))
+    isempty(errs) || throw(RequestError(422, "The feasible settings are invalid.", errs))
     return json_response(200, (candidate_x = grid,))
 end
+
+"Observation origin for the record: rows at a frozen recommendation's x came from that cycle."
+function observation_origins(c::ExperimentContext, cycles)
+    initial = c.mode == "demo" ? "recorded_initial_subset" : "uploaded_file"
+    later = c.mode == "demo" ? "revealed_recorded_value" : "entered_manually"
+    return map(c.observed) do (x, y)
+        k = findfirst(e -> Float64(e.snapshot["record"]["x"]) == x, cycles)
+        (x = x, y = y, origin = k === nothing ? initial : later, cycle = k)
+    end
+end
+
+csv_field(s) = occursin(r"[\",\n]", s) ? "\"" * replace(s, "\"" => "\"\"") * "\"" : s
 
 function export_route(req::HTTP.Request)
     body = read_json(req)
@@ -344,22 +382,54 @@ function export_route(req::HTTP.Request)
     rev = context_revision(c)
     hist = get(body, "history", Any[])
     hist isa AbstractVector && length(hist) <= MAX_HISTORY ||
-        throw(RequestError(422, "History must be a list of at most $MAX_HISTORY snapshots.", [("history", "Invalid.")]))
-    entries = map(enumerate(hist)) do (i, s)
-        s isa AbstractDict || throw(RequestError(422, "Invalid history entry.", [("history[$i]", "Must be a snapshot.")]))
-        get(s, "snapshot_id", nothing) == content_hash(s) && get(s, "session_id", nothing) == c.session_id ||
+        throw(RequestError(422, "History must be a list of at most $MAX_HISTORY entries.", [("history", "Invalid.")]))
+    cycles = map(enumerate(hist)) do (i, h)
+        s = h isa AbstractDict && haskey(h, "snapshot") ? h["snapshot"] : h
+        s isa AbstractDict && get(s, "snapshot_id", nothing) == content_hash(s) && get(s, "session_id", nothing) == c.session_id ||
             throw(RequestError(422, "A history snapshot was altered or belongs to another session.", [("history[$i]", "Snapshot does not verify.")]))
+        (snapshot = s, updated = h isa AbstractDict && get(h, "updated", false) === true)
+    end
+    obs = observation_origins(c, cycles)
+    entries = map(enumerate(cycles)) do (k, e)
+        s = e.snapshot
         x = s["record"]["x"]
-        ys = Float64[y for (xx, y) in c.observed if xx == x]
-        (snapshot = s, outcome = isempty(ys) ? nothing : (x = x, observations = [(x = x, y = y) for y in ys],
-                     comparison = compare_to_frozen(frozen_models(s), ys; sd_individual = s["record"]["noise"]["sd_individual"])))
+        ys = Float64[o.y for o in obs if o.cycle == k]
+        (order = k, snapshot_id = s["snapshot_id"], context_revision = s["context_revision"],
+         data_revision = s["record"]["data_revision"], frozen_at = s["record"]["created_at"], selected_x = x,
+         selection = s["selection"], diagnostic_state = s["diagnostic_state"],
+         frozen_predictions = s["record"]["models"], frozen_noise = s["record"]["noise"],
+         acquisition = s["record"]["acquisition"],
+         later_observations = [(x = x, y = y) for y in ys],
+         comparison = isempty(ys) ? nothing :
+             compare_to_frozen(frozen_models(s), ys; sd_individual = s["record"]["noise"]["sd_individual"]),
+         refit_after_observation = e.updated)
     end
     a = run_analysis(c)
-    return json_response(200, (format = "nextlab-experiment-record-1", exported_at = string(Dates.now(Dates.UTC)) * "Z",
-        api_version = API_VERSION, model_config = MODEL_CONFIG, revision = rev, context = context_json(c),
-        dataset = c.mode == "demo" ? PENDULUM_PROVENANCE :
-                  (name = "Uploaded data", dataset_id = c.dataset_id, note = "Supplied by the user; NextLab makes no claim about its provenance."),
-        history = entries, current_analysis = a))
+    demo = c.mode == "demo"
+    xh = isempty(c.x_unit) ? c.x_label : "$(c.x_label) ($(c.x_unit))"
+    yh = isempty(c.y_unit) ? c.y_label : "$(c.y_label) ($(c.y_unit))"
+    csv = join(vcat(join(csv_field.([xh, yh, "origin", "cycle"]), ","),
+                    ["$(repr(o.x)),$(repr(o.y)),$(o.origin),$(something(o.cycle, ""))" for o in obs]), "\n") * "\n"
+    content = (format = "nextlab-experiment-record-2", api_version = API_VERSION,
+        run_type = demo ? "recorded_data_replay" : "user_uploaded_data",
+        source = demo ?
+            (label = "Recorded pendulum measurements", dataset_id = c.dataset_id, provenance = PENDULUM_PROVENANCE,
+             note = "Revealed values are recorded measurements from the source dataset, revealed one length at a time during a replay; they were not measured in this session. Unrevealed recorded values are not included.") :
+            (label = "User-uploaded data", name = c.source_name, dataset_id = c.dataset_id,
+             note = "Supplied by the user. Every uploaded row was observed before the session; later rows were entered manually. NextLab makes no claim about provenance."),
+        session_id = c.session_id, revision = rev,
+        variables = (x = (label = c.x_label, unit = c.x_unit), y = (label = c.y_label, unit = c.y_unit)),
+        method = (version = METHOD_VERSION, models = [(id = f.id, name = f.name, formula = f.formula, note = f.note) for f in MODEL_FAMILIES],
+                  summary = "Each model is fitted to setting means with equal weight; grouped validation leaves one setting out; relative support is a heuristic weight from validation error, not a probability."),
+        feasible_settings = c.candidate_x,
+        noise_assumption = (stated_response_sd = c.response_sd, current_estimate = a.noise),
+        observations = obs, cycles = entries,
+        current_analysis = (status = a.status, data_revision = a.data === nothing ? nothing : a.data.revision,
+                            models = a.models, diagnostics = a.diagnostics, all_models_inadequate = a.all_models_inadequate,
+                            explanation = a.explanation))
+    record = JSON.parse(JSON.json(content))
+    return json_response(200, (record_id = content_hash(record), exported_at = string(Dates.now(Dates.UTC)) * "Z",
+                                record = record, observations_csv = csv))
 end
 
 function benchmark_route(::HTTP.Request)
@@ -407,7 +477,8 @@ function router(; static_dir::Union{Nothing,AbstractString} = nothing)
     for (method, path, h) in (("GET", "/api/health", health), ("GET", "/api/ready", ready),
                               ("POST", "/api/demo/start", demo_start), ("POST", "/api/demo/reveal", demo_reveal_route),
                               ("POST", "/api/analyze", analyze_route), ("POST", "/api/recommend", recommend_route),
-                              ("POST", "/api/upload", upload_route), ("POST", "/api/feasible", feasible_route),
+                              ("POST", "/api/upload", upload_route), ("POST", "/api/upload/preview", preview_route),
+                              ("GET", "/api/sample.csv", sample_route), ("POST", "/api/feasible", feasible_route),
                               ("POST", "/api/observe", observe_route), ("POST", "/api/export", export_route),
                               ("GET", "/api/benchmark", benchmark_route),
                               ("GET", "/api/benchmark/files/{name}", benchmark_file_route))

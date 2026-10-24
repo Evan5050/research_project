@@ -14,6 +14,9 @@ export type ExperimentContext = {
   response_sd: number | null
   x_unit: string
   y_unit: string
+  x_label: string
+  y_label: string
+  source_name: string
 }
 
 export type FieldError = { field: string; message: string }
@@ -190,15 +193,19 @@ export type OutcomeResponse = Revisioned & {
   updated_context: ExperimentContext
   updated_revision: string
 }
+export type Bounds = { lo: number; hi: number; step: number } | { lo: number; hi: number; n: number }
 export type UploadRequest = {
   csv: string
   x_column?: string | number
   y_column?: string | number
-  bounds?: { lo: number; hi: number; n: number }
+  bounds?: Bounds
   candidate_x?: number[]
   response_sd?: number | null
   x_unit?: string
   y_unit?: string
+  x_label?: string
+  y_label?: string
+  source_name?: string
 }
 export type UploadResponse = {
   context: ExperimentContext
@@ -206,15 +213,21 @@ export type UploadResponse = {
   columns: string[]
   x_column: string
   y_column: string
-  counts: { observations: number; settings: number; candidates: number }
+  counts: { observations: number; settings: number; candidates: number; candidates_outside_observed_range: number }
+  observed_range: { lo: number; hi: number }
+}
+export type PreviewResponse = {
+  columns: string[]
+  n_rows: number
+  rows: string[][]
+  column_info: { name: string; numeric_rows: number; other_rows: number; min: number | null; max: number | null; distinct: number }[]
+  problems: FieldError[]
 }
 export type ExportResponse = {
-  format: 'nextlab-experiment-record-1'
+  record_id: string
   exported_at: string
-  revision: string
-  context: ExperimentContext
-  history: { snapshot: Snapshot; outcome: { x: number; observations: Observation[]; comparison: Comparison } | null }[]
-  current_analysis: Analysis
+  record: Record<string, unknown> & { format: 'nextlab-experiment-record-2'; run_type: string }
+  observations_csv: string
 }
 export type BenchmarkResponse = {
   meta: Record<string, unknown>
@@ -278,8 +291,10 @@ export const revealDemo = (context: ExperimentContext, snapshot: Snapshot) =>
 export const observe = (context: ExperimentContext, snapshot: Snapshot, y: number[]) =>
   call<OutcomeResponse>('POST', '/api/observe', { context, snapshot, y })
 export const upload = (req: UploadRequest) => call<UploadResponse>('POST', '/api/upload', req)
-export const feasibleGrid = (lo: number, hi: number, n: number) =>
-  call<{ candidate_x: number[] }>('POST', '/api/feasible', { lo, hi, n })
-export const exportRecord = (context: ExperimentContext, history: Snapshot[]) =>
+export const exportRecord = (context: ExperimentContext, history: { snapshot: Snapshot; updated: boolean }[]) =>
   call<ExportResponse>('POST', '/api/export', { context, history })
+export const previewUpload = (csv: string) => call<PreviewResponse>('POST', '/api/upload/preview', { csv })
+export const feasibleSettings = (req: { lo?: number; hi?: number; step?: number; candidate_x?: number[] }) =>
+  call<{ candidate_x: number[] }>('POST', '/api/feasible', req)
+export const SAMPLE_CSV_URL = '/api/sample.csv'
 export const fetchBenchmark = () => call<BenchmarkResponse>('GET', '/api/benchmark')

@@ -12,7 +12,8 @@
 ```ts
 ExperimentContext = { mode: "demo" | "upload", session_id, dataset_id,
   observed: {x, y}[], candidate_x: number[], revealed_x: number[],
-  response_sd: number | null, x_unit, y_unit }
+  response_sd: number | null, x_unit, y_unit,
+  x_label, y_label, source_name }   // descriptive only; not part of the revision
 ```
 
 **Session id:**
@@ -62,9 +63,11 @@ The scientific core never sees the demo table. `demo_adapter.jl` is the only rea
 | POST `/api/recommend` | `{context}` | as analyze, plus `snapshot`. `snapshot` is `null` when `status = "no_candidates"`. | 422 (including fewer than 3 distinct x) |
 | POST `/api/demo/reveal` | `{context, snapshot}` | `{revision, session_id, snapshot_id, x, observations, comparison, refit_performed: false, updated_context, updated_revision}` | 422 (not demo, unknown or revealed length, altered snapshot), 409 (stale) |
 | POST `/api/observe` | `{context, snapshot, y: number[]}` (1–50 values) | same shape as reveal | 422 (not upload mode, bad values), 409 (stale) |
-| POST `/api/upload` | `{csv, x_column?, y_column?, bounds?: {lo, hi, n} \| candidate_x?, response_sd?, x_unit?, y_unit?}` | `{context, revision, columns, x_column, y_column, counts}` | 422 with row-numbered CSV errors |
-| POST `/api/feasible` | `{lo, hi, n}` | `{candidate_x}` (an even grid) | 422 |
-| POST `/api/export` | `{context, history: Snapshot[]}` | `{format: "nextlab-experiment-record-1", exported_at, revision, context, dataset, history: [{snapshot, outcome}], current_analysis}` | 422 if a snapshot doesn't verify |
+| POST `/api/upload/preview` | `{csv}` | `{columns, n_rows, rows (first 8, as text), column_info: [{name, numeric_rows, other_rows, min, max, distinct}], problems}` | 422 if unreadable |
+| POST `/api/upload` | `{csv, x_column?, y_column?, bounds?: {lo, hi, step} \| {lo, hi, n}, candidate_x?, response_sd?, x_label?, x_unit?, y_label?, y_unit?, source_name?}`. The range and the list are combined, deduplicated (12 significant digits) and capped at 201. | `{context, revision, columns, x_column, y_column, counts: {observations, settings, candidates, candidates_outside_observed_range}, observed_range}` | 422 with row-numbered CSV errors and `bounds.*` / `candidate_x[i]` field errors |
+| GET `/api/sample.csv` | none | The derived two-column pendulum file (`length_m,period_s`), as a download | |
+| POST `/api/feasible` | `{lo?, hi?, step? \| n?, candidate_x?}` | `{candidate_x}`: the same combination rule as upload | 422 |
+| POST `/api/export` | `{context, history: [{snapshot, updated}]}`. Send the context that includes any values waiting for Update. | `{record_id, exported_at, record, observations_csv}`; see below | 422 if a snapshot doesn't verify |
 | GET `/api/benchmark` | none | `{meta, primary_endpoint, verdicts, paired, summary, nextlab_choices, reproduce: {command, protocol, results_dir}}` | 404 if there are no saved results |
 | GET `/api/benchmark/files/{name}` | `name` ∈ `runs.csv`, `summary.csv`, `paired.csv`, `nextlab_choices.csv`, `meta.json` | The saved file, as a download | 404 for any other name |
 
@@ -74,12 +77,36 @@ The scientific core never sees the demo table. `demo_adapter.jl` is the only rea
 - 413: body over 2 MB (enforced by HTTP.jl, so the body is empty).
 - 500: no internal details. The request body is never logged.
 
+## Experiment record (`nextlab-experiment-record-2`)
+- **IDs:** `record_id` is the SHA-256 of the record content. The record also carries the
+  `session_id`, the context `revision` and every `snapshot_id`.
+- **`run_type`:** `recorded_data_replay` or `user_uploaded_data`. Synthetic benchmark
+  runs are not exported this way; they live in `results/`.
+- **`source`:**
+  - demo: the provenance, including the source links, plus a note that revealed values are
+    recorded measurements, not new ones
+  - upload: the file name and a content-hash dataset ID
+- **Experiment settings:** `variables` (labels and units), `method` (the version and exact
+  formulas), `feasible_settings`, and `noise_assumption` (the stated SD and the current estimate).
+- **`observations`:** each row with `origin` (`recorded_initial_subset`, `revealed_recorded_value`,
+  `uploaded_file` or `entered_manually`) and the cycle it came from.
+  - Unrevealed demo values are never included.
+  - Rows at a frozen recommendation's x are attributed to that cycle, because recommendations only choose unmeasured settings.
+- **`cycles`, in order:** for each cycle,
+  - the snapshot ID, the context and data revisions, and the time it was frozen
+  - the selected x, the selection reason and the diagnostic state
+  - the frozen predictions, unchanged by later refits
+  - the later observations and their comparison
+  - `refit_after_observation`, as reported by the client
+- **`current_analysis`:** the status, models, diagnostics and explanation.
+- **`observations_csv`:** a plain CSV with columns `x label (unit), y label (unit), origin, cycle`.
+
 ## Prototype limits
 | Limit | Value |
 |---|---|
 | Request body or CSV | 2 MB |
 | Observations (CSV rows or context rows) | 2,000 |
-| Feasible settings | 1,001 |
+| Feasible settings | 201 |
 | Values per manual entry | 50 |
 | History snapshots per export | 50 |
 

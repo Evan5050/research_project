@@ -12,7 +12,7 @@ import {
   type Snapshot,
 } from './api'
 import type { Cycle, Step } from './state'
-import { MODEL_STYLE, shortId, sig, support, withUnit } from './format'
+import { MODEL_STYLE, shortId, sig, stop, support, withUnit } from './format'
 
 const DASH = { solid: '', dash: '6 4', dashdot: '7 3 2 3' }
 
@@ -25,14 +25,15 @@ export function Swatch({ id }: { id: ModelId }) {
   )
 }
 
-const STEPS: { key: Exclude<Step, 'done'>; label: string; hint: string }[] = [
+const stepsFor = (demo: boolean): { key: Exclude<Step, 'done'>; label: string; hint: string }[] => [
   { key: 'compare', label: 'Compare', hint: 'Fit three models' },
   { key: 'recommend', label: 'Recommend', hint: 'Freeze predictions' },
-  { key: 'reveal', label: 'Reveal', hint: 'See the recorded value' },
+  demo ? { key: 'reveal', label: 'Reveal', hint: 'See the recorded value' } : { key: 'reveal', label: 'Measure', hint: 'Enter the result' },
   { key: 'update', label: 'Update', hint: 'Refit explicitly' },
 ]
 
-export function StepBar({ step, cycle }: { step: Step; cycle: number }) {
+export function StepBar({ step, cycle, demo }: { step: Step; cycle: number; demo: boolean }) {
+  const STEPS = stepsFor(demo)
   const order = STEPS.map((s) => s.key)
   const at = step === 'done' ? order.length : order.indexOf(step)
   return (
@@ -98,12 +99,15 @@ export function RecommendationPanel({
   snapshot,
   measured,
   units,
+  demo,
 }: {
   rec: RecommendResponse
   snapshot: Snapshot
   measured: [number, number]
   units: { x: string; y: string }
+  demo: boolean
 }) {
+  const setting = demo ? 'length' : 'setting'
   const r = rec.analysis.recommendation!
   const top = [...r.predictions].sort((a, b) => (b.share_of_spread ?? -1) - (a.share_of_spread ?? -1))[0]
   const lead = [...r.predictions].sort((a, b) => (b.support ?? -1) - (a.support ?? -1))[0]
@@ -124,7 +128,7 @@ export function RecommendationPanel({
         </p>
       )}
       <table className="preds">
-        <caption>Frozen predictions (fixed before the reveal)</caption>
+        <caption>Frozen predictions (fixed before the {demo ? 'reveal' : 'measurement'})</caption>
         <tbody>
           {snapshot.record.models.map((m) => (
             <tr key={m.id}>
@@ -139,7 +143,7 @@ export function RecommendationPanel({
       </table>
       <p>
         {r.kind === 'disagreement'
-          ? `Chosen where the support-weighted predictions disagree most among ${r.n_unmeasured} remaining lengths.`
+          ? `Chosen where the support-weighted predictions disagree most among ${r.n_unmeasured} remaining ${setting}s.`
           : r.fallback_reason === 'dominant_model'
             ? `${lead.name} holds at least 0.99 of the relative support, so disagreement is not used. This point checks the leading model where data are sparse; it is not chosen to tell the models apart.`
             : 'The models agree at every remaining length, so this is a space-filling check, not a test between models.'}
@@ -157,7 +161,7 @@ export function RecommendationPanel({
             {predRange && (
               <>
                 The unweighted predictions still range from {withUnit(predRange[0], units.y)} to{' '}
-                {withUnit(predRange[1], units.y)}.
+                {stop(withUnit(predRange[1], units.y))}
               </>
             )}
           </>
@@ -179,7 +183,7 @@ export function RecommendationPanel({
           </dd>
           {r.distance_to_nearest_measured !== null && (
             <>
-              <dt>Distance to nearest measured length</dt>
+              <dt>Distance to nearest measured {setting}</dt>
               <dd>{withUnit(r.distance_to_nearest_measured, units.x)}</dd>
             </>
           )}
@@ -191,7 +195,7 @@ export function RecommendationPanel({
         <table className="small">
           <thead>
             <tr>
-              <th>Remaining length</th>
+              <th>Remaining {setting}</th>
               <th>Model spread</th>
             </tr>
           </thead>
@@ -212,20 +216,23 @@ export function RecommendationPanel({
   )
 }
 
-export function ComparisonPanel({ outcome, units }: { outcome: OutcomeResponse; units: { x: string; y: string } }) {
+export function ComparisonPanel({ outcome, units, demo }: { outcome: OutcomeResponse; units: { x: string; y: string }; demo: boolean }) {
   const c = outcome.comparison
   const closest = c.models.find((m) => m.id === c.closest_model)
   return (
     <section className="panel cmp" aria-live="polite">
       <h2>
-        Recorded at {outcome.x} {units.x}
+        {demo ? 'Recorded' : 'Entered'} at {outcome.x} {units.x}
       </h2>
       <p>
-        {outcome.observations.map((o) => sig(o.y, 4)).join(', ')} {units.y}: {c.n_observations} reported periods, each an
-        average over several swings. <strong>Mean {withUnit(c.observed_mean, units.y)}</strong>.
+        {outcome.observations.map((o) => sig(o.y, 4)).join(', ')} {units.y}:{' '}
+        {demo
+          ? `${c.n_observations} reported periods, each an average over several swings.`
+          : `${c.n_observations} value${c.n_observations === 1 ? '' : 's'} you entered.`}{' '}
+        <strong>{stop(`Mean ${withUnit(c.observed_mean, units.y)}`)}</strong>
       </p>
       <table className="preds">
-        <caption>Recorded mean versus the frozen predictions</caption>
+        <caption>{demo ? 'Recorded' : 'Entered'} mean versus the frozen predictions</caption>
         <thead>
           <tr>
             <th>Model</th>
@@ -322,7 +329,7 @@ export function History({ cycles, units }: { cycles: Cycle[]; units: { x: string
                 {m.name} predicted
               </th>
             ))}
-            <th className="num">Recorded mean</th>
+            <th className="num">Observed mean</th>
             <th>Closest</th>
             <th>Snapshot</th>
           </tr>
@@ -353,7 +360,7 @@ export function History({ cycles, units }: { cycles: Cycle[]; units: { x: string
   )
 }
 
-export function Assumptions({ analysis, dataset }: { analysis: Analysis; dataset: Provenance }) {
+export function Assumptions({ analysis, dataset }: { analysis: Analysis; dataset: Provenance | null }) {
   const n = analysis.noise
   const u = analysis.units
   return (
@@ -419,9 +426,18 @@ export function Assumptions({ analysis, dataset }: { analysis: Analysis; dataset
           </ul>
           <h3>Data</h3>
           <ul>
-            {dataset.limitations.map((l) => (
-              <li key={l}>{l}</li>
-            ))}
+            {dataset ? (
+              dataset.limitations.map((l) => <li key={l}>{l}</li>)
+            ) : (
+              <>
+                <li>Uploaded by the user. NextLab makes no claim about how the data were collected.</li>
+                <li>Units are the labels you entered; nothing is converted.</li>
+                <li>
+                  If no input value is repeated and no noise SD is stated, measurement noise is unknown and separation and fit
+                  adequacy are not assessed.
+                </li>
+              </>
+            )}
           </ul>
         </div>
       </div>
