@@ -44,8 +44,8 @@ The scientific core never sees the demo table. `demo_adapter.jl` is the only rea
     - the noise assumptions and the acquisition method
   - `selection` (kind, fallback reason, explanation)
   - `diagnostic_state`
-- **`snapshot_id`:** the SHA-256 of the content, with all numbers normalized to Float64 so
-  that browser re-serialization (`16.0` → `16`) still verifies.
+- **`snapshot_id`:** the SHA-256 of the content, with all numbers normalized to Float64 (and signed zero to 0.0) so
+  that browser re-serialization (`16.0` → `16`, `-0.0` → `0`) still verifies. Context revisions use the same canonical form.
 - **Verification on reveal, observe and export:**
   - An altered snapshot → 422.
   - A different session or a changed context → 409.
