@@ -29,7 +29,22 @@ Each has exactly two fitted parameters, a and b:
 - Built-in demo: pendulum length (m) versus reported period (s). The exact CSV snapshot and
   attribution come from build Prompt 03. The periods are averages over several swings,
   not raw individual swing timings.
-- Two-column CSV upload. Repeated x values are kept as repeated observations.
+- Two-column CSV upload. Repeated x values are kept as repeated observations. In
+  uploaded-data mode, the user sets the feasible bounds or a candidate list separately.
+- The source, license (GPL >= 2, kept as declared), files and limitations are in `data/README.md`.
+
+## Real-data replay contract
+- **Start:** the three shortest distinct lengths (0.101, 0.205 and 0.411 m), with 9 observations.
+  This is a declared teaching scenario chosen by x order, not by outcome.
+- **Candidates:** only the six remaining recorded lengths.
+- **One reveal:** shows all three reported periods at one length. NextLab counts and displays
+  both lengths measured and individual observations. A benchmark never counts three
+  observations as one raw measurement.
+- **What the engine sees:** only observed records enter fitting, noise estimation or
+  acquisition. It gets `engine_inputs`, which is observed x and y plus the candidate x
+  values only. Unrevealed periods stay out of the browser payload and the bundle. This
+  keeps the scientific inputs separate; it is not a claim that public data is secret.
+- **Reset:** restores the exact initial state.
 
 ## Numerical method
 Build Prompt 04 is authoritative:

@@ -16,6 +16,23 @@ end
 
 not_found(::HTTP.Request) = json_response(404, (error = "not found",))
 
+# One local replay session per server process (local-first single-user demo).
+const SESSION_LOCK = ReentrantLock()
+const SESSION = Ref{Union{Nothing,ReplaySession}}(nothing)
+
+function with_session(f)
+    lock(SESSION_LOCK) do
+        SESSION[] === nothing && (SESSION[] = ReplaySession())
+        f(SESSION[])
+    end
+end
+
+pendulum_payload(s::ReplaySession) = (provenance = PENDULUM_PROVENANCE, state = public_state(s))
+
+pendulum(::HTTP.Request) = with_session(s -> json_response(200, pendulum_payload(s)))
+
+pendulum_reset(::HTTP.Request) = with_session(s -> json_response(200, pendulum_payload(reset!(s))))
+
 """
     router(; static_dir = nothing)
 
@@ -27,6 +44,8 @@ function router(; static_dir::Union{Nothing,AbstractString} = nothing)
         HTTP.fileserver(static_dir; spa_fallback = "index.html")
     r = HTTP.Router(fallback)
     HTTP.register!(r, "GET", "/api/health", health)
+    HTTP.register!(r, "GET", "/api/pendulum", pendulum)
+    HTTP.register!(r, "POST", "/api/pendulum/reset", pendulum_reset)
     HTTP.register!(r, "/api/**", not_found)
     return r
 end
