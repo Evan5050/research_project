@@ -2,7 +2,7 @@
 
 julia_version = "1.13.2"
 manifest_format = "2.1"
-project_hash = "72e4a5326ecf68b55d1db1fb352a8b4bc1c6efda"
+project_hash = "9c2a3fe0dead7de0c222b34d9e33d9e59884a060"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -170,7 +170,7 @@ uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 version = "1.3.0"
 
 [[deps.NextLab]]
-deps = ["CSV", "HTTP", "JSON", "LinearAlgebra", "Random", "Statistics"]
+deps = ["CSV", "Dates", "HTTP", "JSON", "LinearAlgebra", "Random", "SHA", "Statistics"]
 path = "."
 uuid = "2665465c-ef5e-4280-bd2b-d45e755c41c9"
 version = "0.1.0"

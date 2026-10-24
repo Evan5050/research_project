@@ -5,6 +5,7 @@ using JSON
 using CSV
 
 include("data_tests.jl")
+include("core_tests.jl")
 
 @testset "NextLab API" begin
     server = NextLab.start_server(; port = 0)

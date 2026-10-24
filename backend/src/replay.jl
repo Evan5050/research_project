@@ -94,3 +94,13 @@ public_state(s::ReplaySession) = (
     observations = observation_count(s),
     remaining_lengths = length(s.candidates),
 )
+
+"""
+    recommend(s; kwargs...) -> analysis
+
+Demo adapter: runs the scientific core on `engine_inputs(s)` only.
+"""
+recommend(s::ReplaySession; kwargs...) =
+    let inp = engine_inputs(s)
+        analyze(inp.x, inp.y, inp.candidate_x; x_unit = "m", y_unit = "s", kwargs...)
+    end
