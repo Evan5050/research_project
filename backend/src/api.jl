@@ -52,11 +52,12 @@ end
 
 sha(s) = bytes2hex(sha256(s))
 
-# Numbers become Float64 so a value that a browser rewrites (16.0 -> 16) hashes the same.
+# Numbers become Float64 so a value that a browser rewrites hashes the same: 16.0 -> 16, and
+# -0.0 -> 0 (JSON.stringify drops the sign of zero), so signed zero canonicalizes to 0.0.
 normalize(x::AbstractDict) = Dict{String,Any}(String(k) => normalize(v) for (k, v) in x)
 normalize(x::AbstractVector) = Any[normalize(v) for v in x]
 normalize(x::Bool) = x
-normalize(x::Real) = Float64(x)
+normalize(x::Real) = (f = Float64(x); iszero(f) ? 0.0 : f)
 normalize(x) = x
 canonical(x) = JSON.json(normalize(JSON.parse(JSON.json(x))); sort_keys = true)
 content_hash(d::AbstractDict) = sha(canonical(Dict{String,Any}(k => v for (k, v) in d if k != "snapshot_id")))
@@ -444,7 +445,9 @@ function benchmark_route(::HTTP.Request)
                  no_clear = count(r -> r.baseline == b && r.verdict == "no clear difference", primary),
                  worse = count(r -> r.baseline == b && r.verdict == "NextLab worse", primary))
                 for b in String.(Benchmark.BASELINES)]
-    return json_response(200, (meta = meta, primary_endpoint = (n_settings = final, n_observations = final * Benchmark.REPS),
+    return json_response(200, (meta = meta, current_method_version = METHOD_VERSION,
+        results_match_current_method = get(meta, "method_version", nothing) == METHOD_VERSION,
+        primary_endpoint = (n_settings = final, n_observations = final * Benchmark.REPS),
         verdicts = verdicts, paired = primary, summary = summary, nextlab_choices = rows("nextlab_choices.csv"),
         reproduce = (command = "julia --project=backend --threads=auto backend/scripts/run_benchmark.jl full 100",
                      protocol = "docs/BENCHMARK.md", results_dir = "results/benchmark_full")))
